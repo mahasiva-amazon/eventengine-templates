@@ -1,0 +1,35 @@
+## LAB Instructions
+
+Lab: EKS Workshop
+### Overview
+This workshop is designed to quickly get you familiar with the concepts of using EKS.
+
+### Setting
+In this Lab, you would be configuring deploying apps and scaling those app in a pre-built EKS cluster.
+
+### Pre-Requisites
+As part of the lab, you will be using Cloud9 IDE to run all your lab instructions. An Cloud9 environment has been pre-created for you ("WorkshopWorkspace") with the necessary tools installed. 
+
+To open Cloud9: Go to AWS Console and search for Cloud9 in the services. Click on the Cloud9 service and select the "WorkshopWorkspace" environment and it will open the IDE.
+
+Once Cloud9 IDE is open, check to see if the following tools are installed and setup by typing the following in the command line
+
+1. kubectl 
+2. eksctl
+3. jq
+4. echo $LAB_CLUSTER_ID
+5. echo $AWS_REGION
+6. echo $ACCOUNT_ID
+7. echo $AWS_DEFAULT_REGION
+
+Next, you need to change AWS Settings in Cloud9 to disable "AWS Managed temporary credentials". For this,
+
+1. In Cloud9, click on the "Preferences" gear icon in the topmost right corner of your Cloud9 window.
+2. Select the "AWS Settings" and "Credentials" tab within it.
+3. Disable the checkbox "AWS Managed temporary credentials". [Refer link](https://www.eksworkshop.com/020_prerequisites/workspaceiam/)
+ 
+
+### Get Started
+1. Please ensure that you are running in the us-west-2 (Oregon) region by checking the upper right-hand corner of the AWS Console once you are logged in.
+2. Open your Cloud9 as per the instructions provided in the Pre-Requisites section
+3. On successful execution of previous commands proceed to next step

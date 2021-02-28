@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "Master Setup"
+
+Parameters:
+  # Optional parameters passed by the Event Engine to the stack.
+  EEAPIBase:
+    Description: "Event Engine API Base URL"
+    Type: String
+  EEAPIToken:
+    Description: "API Token to use for authentication"
+    Type: String
+  EEEventId:
+    Description: "Unique ID of this Event"
+    Type: String
+  EEModuleId:
+    Description: "Unique ID of this module"
+    Type: String
+  EEModuleVersion:
+    Description: "Version of this module"
+    Type: String
+  EELifecycleTopicArn:
+    Description: "ARN of the lifecycle SNS topic"
+    Type: String
+  EEAssetsBucket:
+    Description: "Region-specific assets S3 bucket name (e.g. ee-assets-prod-us-east-1)"
+    Type: String
+  EEAssetsKeyPrefix:
+    Description: "S3 key prefix where this modules assets are stored. (e.g. modules/my_module/v1/)"
+    Type: String
+
+Resources:
+  LambdaEventHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lamba.eehandler.role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AWSLambdaFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/IAMFullAccess'
+  MasterLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs12.x
+      Role: !GetAtt LambdaEventHandlerRole.Arn
+      Handler: index.handler
+      FunctionName: mastersetup
+      Timeout: 420
+      Code:
+        ZipFile: |
+          var AWS = require('aws-sdk');
+          exports.handler =  function(event, context, callback) {
+            var payload = JSON.parse(event.Records[0].Sns.Message);
+            console.log("Payload " + JSON.stringify(payload));
+            var moduleId = process.env.ModuleId
+            console.log("Module Id " + moduleId);
+            if(moduleId == payload["module-id"] && payload["cfn-outputs"]["Cloud9LambdaArn"]) {
+              var lambda = new AWS.Lambda();
+              var params = {
+                FunctionName: payload["cfn-outputs"]["Cloud9LambdaArn"],
+                InvocationType: "Event",
+                Payload: "{}"
+              };
+              lambda.invoke(params, function(err, data) {
+                if (err)
+                console.log(err, err.stack); // an error occurred
+                else
+                console.log(data);           // successful response
+              });
+            }
+          }
+      Description: Master Lambda
+      Environment:
+        Variables:
+          ModuleId: !Ref EEModuleId
+  MasterLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MasterLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+  LambdaLifecycleSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !GetAtt MasterLambda.Arn
+      FilterPolicy:
+        event:
+          - "eventengine:MODULE_DEPLOYED"
+      Protocol: lambda
+      TopicArn: !Ref EELifecycleTopicArn

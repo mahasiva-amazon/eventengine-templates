@@ -1,0 +1,356 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "EKS BlueGreen Deployment Workshop Setup"  
+Parameters:
+  # Optional parameters passed by the Event Engine to the stack.
+  EEEventId:
+    Description: "Unique ID of this Event"
+    Type: String
+  EETeamId:
+    Description: "Unique ID of this Team"
+    Type: String
+  EEModuleId:
+    Description: "Unique ID of this module"
+    Type: String
+  EEModuleVersion:
+    Description: "Version of this module"
+    Type: String
+  EEAssetsBucket:
+    Description: "Region-specific assets S3 bucket name (e.g. ee-assets-prod-us-east-1)"
+    Type: String
+  EEAssetsKeyPrefix:
+    Description: "S3 key prefix where this modules assets are stored. (e.g. modules/my_module/v1/)"
+    Type: String
+  EEMasterAccountId:
+    Description: "AWS Account Id of the Master account"
+    Type: String
+  EETeamRoleArn:
+    Description: "ARN of the Team Role"
+    Type: String
+  EEKeyPair:
+    Description: "Name of the EC2 KeyPair generated for the Team"
+    Type: AWS::EC2::KeyPair::KeyName
+Resources:
+  Cloud9EC2AdminRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: workshop.admin.role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonEC2FullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/IAMFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
+        - 'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+  CommandLogS3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Join ["-", ["runcommandlogs",!Ref ]]
+  LambdaEventHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lamba.eehandler.role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonEC2FullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/IAMFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonSSMFullAccess'
+  Cloud9SetupAgent:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs12.x
+      Role: !GetAtt LambdaEventHandlerRole.Arn
+      Handler: index.handler
+      FunctionName: SetupCloud9Config
+      Timeout: 720
+      Environment:
+        Variables:
+          S3BucketName: !Ref CommandLogS3Bucket
+          #s3://ee-assets-prod-us-east-1/modules/6c911893578545d282b2d8310466e7ed/v3/
+          S3ModuleBucket: !Join ["/", ["s3:/",!Ref EEAssetsBucket, !Ref EEAssetsKeyPrefix,""]]
+          InstallModuleSha: @@InstallModuleSha@@
+          Timeout1: @@Timeout1@@
+          Timeout2: @@Timeout2@@
+          Timeout3: @@Timeout3@@
+          Timeout4: @@Timeout4@@
+      Code:
+        ZipFile: |
+          var AWS = require('aws-sdk');
+          exports.handler =  function(event, context, callback) {
+            var params = {
+              Filters: [
+                {
+                  Name: 'tag:platform:type',
+                  Values: [
+                    "Cloud9"
+                  ]
+                },
+                {
+                  Name: 'instance-state-name',
+                  Values: ['running']
+                }
+              ]
+            };
+            var ec2 = new AWS.EC2();
+            ec2.describeInstances(params,function(err, data) {
+              if (err)
+              console.log(err, err.stack);
+              else {
+                var instanceId = data.Reservations[0].Instances[0].InstanceId;
+                var assocInstanceProfile = data.Reservations[0].Instances[0].IamInstanceProfile;
+                console.log("Instances Identified " + instanceId);
+                associateIamInstanceProfile(ec2,assocInstanceProfile,instanceId);
+                setTimeout(function() {rebootInstances(ec2,instanceId);},process.env.Timeout1);
+                setTimeout(function() {createSSMInstallScriptsDocs(instanceId);},process.env.Timeout1);
+                setTimeout(function() { console.log("Completed"); }, process.env.Timeout1);
+              }
+            });
+
+          }
+
+          function rebootInstances(ec2,instanceId) {
+            var params = { InstanceIds: [ instanceId ] };
+            ec2.rebootInstances(params, function(err, data) {
+              if (err)
+              console.log(err, err.stack);
+              else
+              console.log(data);
+            });
+          }
+          function associateIamInstanceProfile(ec2,assocInstanceProfile,instanceId) {
+            if(!assocInstanceProfile) {
+              var params = {
+                IamInstanceProfile: {
+                  Name: 'AllowAllAccessToCloud9EC2'
+                },
+                InstanceId: instanceId
+              };
+              ec2.associateIamInstanceProfile(params, function(err, data) {
+                if (err)
+                console.log(err, err.stack);
+                else
+                console.log(data);
+              });
+            }
+          }
+          function createSSMInstallScriptsDocs(instanceId) {
+            var ssm = new AWS.SSM();
+            var params = {
+              Content: "{\"schemaVersion\": \"2.0\",\"version\": \"1.0.0\",\"packages\": {\"amazon\": {\"_any\": {\"x86_64\": {\"file\": \"install.zip\"}}}},\"files\": {\"install.zip\": {\"checksums\": {\"sha256\": \"process.env.InstallModuleSha\"}}}}",
+              Name:"workshop-tools",
+              Attachments: [
+                {
+                  Key: "SourceUrl",
+                  Values: [process.env.S3ModuleBucket]
+                }
+              ],
+              DocumentFormat: "JSON",
+              DocumentType: "Package"
+            }
+            ssm.createDocument(params,function(err, data) {
+              if(err)
+                console.log("Error " + err);
+              setTimeout(function() {
+                  if(!err) {
+                    console.log("Status of SSM Doc " + data.Status);
+                  }
+                  execInstallScripts(ssm,instanceId)
+              },process.env.Timeout3);
+            });
+          }
+          function execInstallScripts(ssm,instanceId) {
+            console.log("Executing installation for " + instanceId);
+            var params = {
+              DocumentName: 'AWS-ConfigureAWSPackage',
+              DocumentVersion: '1',
+              CloudWatchOutputConfig: {
+                  CloudWatchOutputEnabled: true
+              },
+              Parameters: {
+                action: ['Install'],
+                installationType:["Uninstall and reinstall"],
+                name: ["workshop-tools"],
+                version:[""]
+              },
+              InstanceIds: [instanceId],
+              TimeoutSeconds: 60
+            }
+            ssm.sendCommand(params,function(err, data) {
+              if (err) {
+                setTimeout(function() {
+                  ssm.sendCommand(params,function(err, data) {
+                    if(err) {
+                      console.log(err, err.stack);
+                      setTimeout(function() {
+                        ssm.sendCommand(params,function(err, data){
+                          if(err) {
+                            console.log(err, err.stack);
+                            setTimeout(function() {ssm.sendCommand(params,function(err, data){});},process.env.Timeout2);
+                          }
+                        });
+                      },process.env.Timeout3);
+                    }
+                  });
+                },process.env.Timeout4);
+                console.log(err, err.stack);
+              }
+              else {
+                console.log("Data " + JSON.stringify(data));
+              }
+            });
+          }
+      Description: Enable Cloud9 start with relevant permissions
+  Cloud9SetupAgentPermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt Cloud9SetupAgent.Arn
+      Action: lambda:InvokeFunction
+      Principal: !Ref EEMasterAccountId
+  AllowAllAccessToCloud9EC2:
+    Type: AWS::IAM::InstanceProfile
+    DependsOn: Cloud9EC2AdminRole
+    Properties:
+      InstanceProfileName: "AllowAllAccessToCloud9EC2"
+      Path: "/"
+      Roles:
+        - workshop.admin.role
+  Cloud9AccessPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: AllowTeamRoleAccessToCloud9
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'cloud9:*'
+              - 'iam:ListUsers'
+              - 'iam:GetUser'
+              - 'ec2:DescribeVpcs'
+              - 'ec2:DescribeSubnets'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'iam:CreateServiceLinkedRole'
+            Resource: '*'
+            Condition:
+              StringLike:
+                'iam:AWSServiceName': cloud9.amazonaws.com
+      Roles:
+        - TeamRole
+  Cloud9VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 192.168.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9VPCIGW:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  AttachGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      InternetGatewayId: !Ref Cloud9VPCIGW
+  Cloud9CommonRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9IGWRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref Cloud9CommonRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref Cloud9VPCIGW
+  Cloud9PublicSubnetOne:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      MapPublicIpOnLaunch: true
+      CidrBlock: 192.168.0.0/19
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9PublicSubnetOneRouteTableAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref Cloud9PublicSubnetOne
+      RouteTableId: !Ref Cloud9CommonRouteTable
+  Cloud9EC2:
+    Type: AWS::Cloud9::EnvironmentEC2
+    Properties:
+      AutomaticStopTimeMinutes: 120
+      OwnerArn: !Join [":", ["arn:aws:sts:",!Ref 'AWS::AccountId',"assumed-role/TeamRole/MasterKey"]]
+      InstanceType: t3.small
+      Name: WorkshopWorkspace
+      SubnetId: !Ref Cloud9PublicSubnetOne
+      Tags:
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: event:name
+          Value: Immersion-Day
+        - Key: event:id
+          Value: !Ref EEEventId
+        - Key: platform:type
+          Value: Cloud9
+Outputs:
+  Cloud9LambdaArn:
+    Value: !GetAtt Cloud9SetupAgent.Arn
+    Export:
+      Name: Cloud9SetupAgent

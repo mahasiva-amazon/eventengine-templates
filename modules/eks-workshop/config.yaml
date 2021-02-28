@@ -1,0 +1,27 @@
+ModuleParams:
+  IAMPermissions:
+    PolicyStaements: |
+      [
+      ]
+    ManagedPolicyArns: 
+      - 'arn:aws:iam::aws:policy/AdministratorAccess'
+    TrustedServices: []
+    ServiceLinkedRoles: []
+    Checkpoints: []
+TemplateReplace:
+  Timeout1: 30000
+  Timeout2: 240000
+  Timeout3: 120000
+  Timeout4: 60000
+  InstallModuleSha: 87fb553d22e674ecb66f1d1901a9b91c64397536ec9d50b17562d5e7e6603b70
+ScriptFiles:
+  - increase-disk-size.sh
+  - install-eks-tool-set.sh
+  - install-eks-cluster.sh
+    - version: 1.16
+    - name: eksworkshop-eksctl
+    - nodes: 2
+    - node_labels: lifecycle=OnDemand,intent=control-apps
+  - install-basic-k8s-app.sh
+    
+      
