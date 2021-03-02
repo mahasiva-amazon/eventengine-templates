@@ -9,14 +9,19 @@ repositories {
 }
 
 dependencies {
-   implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.965')
-   
+  implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.+')
+  compile 'org.apache.logging.log4j:log4j-core:2.7'
 }
 
 subprojects {
    apply plugin:'java'
+
+   repositories {
+      mavenCentral()
+      jcenter()
+   }
    dependencies {
-      implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.965')
+      implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.+')
       implementation 'com.amazonaws:aws-java-sdk-s3'
       implementation group: 'org.yaml', name: 'snakeyaml', version: '1.19'
    }
