@@ -5,17 +5,18 @@ apply plugin:'java'
 
 repositories {
   mavenCentral()
+  jcenter()
 }
 
 dependencies {
-   implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.X')
+   implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.965')
    
 }
 
 subprojects {
    apply plugin:'java'
    dependencies {
-      implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.X')
+      implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.965')
       implementation 'com.amazonaws:aws-java-sdk-s3'
       implementation group: 'org.yaml', name: 'snakeyaml', version: '1.19'
    }
