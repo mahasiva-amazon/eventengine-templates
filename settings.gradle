@@ -1,2 +1,3 @@
 rootProject.name = 'eventengine-templates'
 include 'modules:eks-workshop'
+include 'modules:sandbox'

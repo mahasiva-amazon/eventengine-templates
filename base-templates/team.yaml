@@ -83,13 +83,13 @@ Resources:
       Environment:
         Variables:
           S3BucketName: !Ref CommandLogS3Bucket
-          #s3://ee-assets-prod-us-east-1/modules/6c911893578545d282b2d8310466e7ed/v3/
+          #e.g. s3://ee-assets-prod-us-east-1/modules/6c911893578545d282b2d8310466e7ed/v3/
           S3ModuleBucket: !Join ["/", ["s3:/",!Ref EEAssetsBucket, !Ref EEAssetsKeyPrefix,""]]
-          InstallModuleSha: @@InstallModuleSha@@
-          Timeout1: @@Timeout1@@
-          Timeout2: @@Timeout2@@
-          Timeout3: @@Timeout3@@
-          Timeout4: @@Timeout4@@
+          InstallModuleSha: @InstallModuleSha@
+          Timeout1: @Timeout1@
+          Timeout2: @Timeout2@
+          Timeout3: @Timeout3@
+          Timeout4: @Timeout4@
       Code:
         ZipFile: |
           var AWS = require('aws-sdk');

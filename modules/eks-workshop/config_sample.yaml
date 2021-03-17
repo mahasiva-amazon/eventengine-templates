@@ -9,14 +9,14 @@ ModuleParams:
     ServiceLinkedRoles: []
     Checkpoints: []
 TemplateReplace:
-  Timeout1: '30000'
+  Timeout1: '5000'
   Timeout2: '240000'
   Timeout3: '120000'
   Timeout4: '60000'
  # InstallModuleSha: '87fb553d22e674ecb66f1d1901a9b91c64397536ec9d50b17562d5e7e6603b70'
 ScriptFiles:
   'increase-disk-size.sh': 
-    DiskSize: '20'
+    DiskSize: '40'
   'install-eks-tool-set.sh': []
   'install-eks-cluster.sh': 
     version: '1.16'

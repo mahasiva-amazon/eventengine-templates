@@ -1,0 +1,4 @@
+group 'aws.eventengine.templates.sandbox'
+version '1.0-SNAPSHOT'
+
+build.dependsOn(generateScripts,zipScripts,generateTemplates,createExecutorScript)

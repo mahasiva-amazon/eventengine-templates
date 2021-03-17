@@ -1,28 +1,195 @@
-group 'aws.eventengine.templates'
-version '1.0-SNAPSHOT'
-
-apply plugin:'java'
-
-repositories {
-  mavenCentral()
-  jcenter()
-}
-
-dependencies {
-  implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.+')
-  compile 'org.apache.logging.log4j:log4j-core:2.7'
-}
-
-subprojects {
-   apply plugin:'java'
-
+buildscript {
    repositories {
       mavenCentral()
       jcenter()
    }
    dependencies {
-      implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.+')
-      implementation 'com.amazonaws:aws-java-sdk-s3'
-      implementation group: 'org.yaml', name: 'snakeyaml', version: '1.19'
+      classpath platform('com.amazonaws:aws-java-sdk-bom:1.11.+')
+      classpath 'com.amazonaws:aws-java-sdk-s3'
+      classpath group: 'com.fasterxml.jackson.dataformat', name: 'jackson-dataformat-yaml', version: '2.12.1'
+      classpath group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.12.1'
+      classpath group: 'org.apache.commons', name: 'commons-lang3', version: '3.12.0'
+   }
+}
+
+plugins {
+    id 'org.barfuin.gradle.taskinfo' version '1.0.5'
+    id 'org.gradle.crypto.checksum' version '1.1.0'
+}
+
+apply plugin:'base'
+
+group 'aws.eventengine.templates'
+version '1.0-SNAPSHOT'
+
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.core.type.TypeReference
+import java.util.HashMap
+import org.apache.tools.ant.filters.ReplaceTokens
+import org.gradle.crypto.checksum.Checksum
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.Files;
+import java.io.IOException;
+import java.nio.file.StandardOpenOption;
+
+ext {
+   TRACE_ENABLED = false;
+}
+
+def stopBuild(String message) {
+   throw new GradleException(message)
+}
+
+def trace(String message, String projectName) {
+   if(TRACE_ENABLED) {
+      println( projectName + " -> " + message)
+   }
+}
+
+def checksum(String filepath) throws IOException {
+  MessageDigest md = MessageDigest.getInstance("SHA-256");
+  DigestInputStream dis = null;
+  try{
+      dis = new DigestInputStream(new FileInputStream(filepath),md)
+      while (dis.read() != -1) ; //empty loop to clear the data
+         md = dis.getMessageDigest();
+  }catch(Exception dexcp) {
+   if(dis != null) {
+      try {
+         dis.close();
+      }catch(Exception excp) {}
+   }
+  }
+  StringBuilder result = new StringBuilder();
+  for (byte b : md.digest()) {
+      result.append(String.format("%02x", b));
+  }
+  return result.toString();
+}
+
+subprojects {
+   apply plugin:'base'
+   
+   task copyBaseTemplate(type: Copy) {
+      trace("Copy base templates",project.name)
+      from(rootProject.projectDir.absolutePath + File.separator + "base-templates") {
+      }
+      into "${buildDir}/libs/templates" 
+   }
+   
+   task copyProjectTemplate(type: Copy) {
+      trace("Copy project templates",project.name)
+      from(projectDir.absolutePath + File.separator + "templates") {
+         //filter(ReplaceTokens, replaceTokens)
+      }
+      into "${buildDir}/libs/templates"
+   }
+   
+   task readConfig() {
+      //this is purely a configuration task
+      trace("read configuration file",project.name)
+      String fileName = "config.yaml" 
+      if(project.hasProperty(project.name + ".configFileName")) {
+         fileName = project.getProperty(project.name + ".configFileName")
+      } else {
+         fileName = projectDir.absolutePath + File.separator + fileName
+      }
+      File file = new File(fileName)
+      println "Using configuration for module " + project.name + " file : " + fileName + " exists: " + file.exists()
+      if(file.exists()) {
+         ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
+         TypeReference<HashMap<String,Object>> typeRef = new TypeReference<HashMap<String,Object>>() {};
+         def config = mapper.readValue(file,typeRef)
+         println project.name + "  " + project.hashCode()
+         project.ext.config = config
+      }
+   }
+   
+   task copyBaseScripts(type: Copy) {
+      trace("Copy base scripts",project.name)
+      from(rootProject.projectDir.absolutePath + File.separator + "base-scripts")
+      into "${buildDir}/libs/scripts"
+   }
+   
+   task copyProjectScripts(type: Copy) {
+      from(projectDir.absolutePath + File.separator + "scripts")
+      into "${buildDir}/libs/scripts"
+   }
+   
+   task generateScripts(type: Copy) {
+         trace("generate scripts",project.name)
+         copyProjectScripts.mustRunAfter(copyBaseScripts)
+         dependsOn(copyBaseScripts,copyProjectScripts)
+         from("${buildDir}/libs/scripts") {
+            if(project.ext.has("config")) {
+               HashMap replaceValues = new HashMap();
+               for(def scriptValues : project.ext.config.ScriptFiles) {
+                  //println scriptValues.value
+                  replaceValues.putAll(scriptValues.value)
+               }
+               println replaceValues
+               filter(ReplaceTokens, tokens: replaceValues)
+            }
+         }
+         into "${buildDir}/libs/final/scripts"
+   }
+   
+   task generateTemplates(type: Copy) {
+         trace("generate templates",project.name)
+         copyProjectTemplate.mustRunAfter(copyBaseTemplate)
+         dependsOn(copyBaseTemplate,copyProjectTemplate)
+         from("${buildDir}/libs/templates/") {
+            if(project.ext.has("config")) {
+                def checksum = checksum("${buildDir}/libs/final/zip/install.zip")
+             //println checksum
+             project.ext.config.TemplateReplace.put("InstallModuleSha", checksum)
+             //println project.ext.config.TemplateReplace
+               filter(ReplaceTokens, tokens: project.ext.config.TemplateReplace)
+            }
+         }
+         into "${buildDir}/libs/final/module"
+   }
+   
+   task createExecutorScript() {
+      doLast {
+         //println "Exec --> " + "project.name " + project.name + " " + project.hashCode() + " " + project.ext.config
+         if(project.ext.has("config")) {
+            Path path = Paths.get("${buildDir}/libs/final/scripts/run.sh");
+            StringBuilder execScript = new StringBuilder('#!/bin/bash').append(System.lineSeparator());
+            for(def scriptValues : project.ext.config.ScriptFiles) {
+               execScript.append('grep ').append('\'' + scriptValues.key + '\'').append(' ')
+               execScript.append('/tmp/lastExecutedScript.txt').append(System.lineSeparator())
+               execScript.append('RET=$?').append(System.lineSeparator);
+               execScript.append('if [ $RET -ne 0 ]; then').append(System.lineSeparator())
+               execScript.append('bash -x  .').append(File.separator).append(scriptValues.key).append(' >> /tmp/scriptLogs.txt');
+               execScript.append(System.lineSeparator()).append('fi').append(System.lineSeparator())
+                execScript.append('RET=$?').append(System.lineSeparator);
+               execScript.append('if [ $RET -ne 0 ]; then').append(System.lineSeparator()).append('exit -1;')
+               execScript.append(System.lineSeparator()).append('fi').append(System.lineSeparator())
+               execScript.append('echo `date`').append('\'' + scriptValues.key + '\'').append(' >> /tmp/lastExecutedScript.txt').append(System.lineSeparator())
+            }
+            path.getParent().toFile().mkdirs()
+            if(!path.toFile().exists()) {
+               Files.createFile(path)
+            }
+            Files.write(path, execScript.toString().getBytes());
+         }
+      }
+   }
+   
+   task zipScripts(type: Zip) {
+      if(project.ext.has("config")) {
+         from("${buildDir}/libs/final/scripts")
+         include '*'
+         archiveName 'install.zip'
+         destinationDir(file("${buildDir}/libs/final/module"))
+      }
    }
 }
