@@ -1,4 +1,4 @@
 group 'aws.eventengine.templates.eksworkshop'
 version '1.0-SNAPSHOT'
 
-build.dependsOn(generateScripts,zipScripts,generateTemplates,createExecutorScript)
+build.dependsOn(generateTemplates)

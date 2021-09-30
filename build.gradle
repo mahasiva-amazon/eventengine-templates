@@ -54,8 +54,9 @@ def trace(String message, String projectName) {
 }
 
 def checksum(String filepath) throws IOException {
-  MessageDigest md = MessageDigest.getInstance("SHA-256");
-  DigestInputStream dis = null;
+  println "Zip file " + filepath
+  def MessageDigest md = MessageDigest.getInstance("SHA-256");
+  def DigestInputStream dis = null;
   try{
       dis = new DigestInputStream(new FileInputStream(filepath),md)
       while (dis.read() != -1) ; //empty loop to clear the data
@@ -67,10 +68,12 @@ def checksum(String filepath) throws IOException {
       }catch(Exception excp) {}
    }
   }
-  StringBuilder result = new StringBuilder();
+  def StringBuilder result = new StringBuilder();
   for (byte b : md.digest()) {
       result.append(String.format("%02x", b));
   }
+  //println "digest" + result
+  md  .reset()
   return result.toString();
 }
 
@@ -134,50 +137,58 @@ subprojects {
                   //println scriptValues.value
                   replaceValues.putAll(scriptValues.value)
                }
-               println replaceValues
                filter(ReplaceTokens, tokens: replaceValues)
             }
          }
          into "${buildDir}/libs/final/scripts"
    }
    
-   task generateTemplates(type: Copy) {
-         trace("generate templates",project.name)
-         copyProjectTemplate.mustRunAfter(copyBaseTemplate)
-         dependsOn(copyBaseTemplate,copyProjectTemplate)
-         from("${buildDir}/libs/templates/") {
-            if(project.ext.has("config")) {
-                def checksum = checksum("${buildDir}/libs/final/zip/install.zip")
-             //println checksum
-             project.ext.config.TemplateReplace.put("InstallModuleSha", checksum)
-             //println project.ext.config.TemplateReplace
-               filter(ReplaceTokens, tokens: project.ext.config.TemplateReplace)
-            }
-         }
-         into "${buildDir}/libs/final/module"
-   }
-   
    task createExecutorScript() {
+      trace("generate scripts",project.name)
+      dependsOn(generateScripts)
       doLast {
          //println "Exec --> " + "project.name " + project.name + " " + project.hashCode() + " " + project.ext.config
          if(project.ext.has("config")) {
-            Path path = Paths.get("${buildDir}/libs/final/scripts/run.sh");
+            Path path = Paths.get("${buildDir}/libs/final/scripts/install.sh");
+            Path uninstallPath = Paths.get("${buildDir}/libs/final/scripts/uninstall.sh");
             StringBuilder execScript = new StringBuilder('#!/bin/bash').append(System.lineSeparator());
+            execScript.append(System.lineSeparator())
+            
+            execScript.append("FAILED_SCRIPT=''").append(System.lineSeparator()).append('trap cleanup ERR').append(System.lineSeparator());
+            
+            execScript.append(System.lineSeparator())
+            execScript.append('function cleanup() {').append(System.lineSeparator());
+            execScript.append(' if [ ! -z "$FAILED_SCRIPT" ] ; then').append(System.lineSeparator());
+            execScript.append(' source ./cleanup.sh').append(System.lineSeparator());
+            execScript.append(' cleanup_$FAILED_SCRIPT').append(System.lineSeparator());
+            execScript.append(' fi').append(System.lineSeparator()).append('}');
+            execScript.append(System.lineSeparator())
+            
+            execScript.append(System.lineSeparator())
+            execScript.append('source .').append(File.separator).append('init.sh >> /tmp/scriptLogs.txt')
+            execScript.append(System.lineSeparator())
+            
             for(def scriptValues : project.ext.config.ScriptFiles) {
+               execScript.append(System.lineSeparator())
                execScript.append('grep ').append('\'' + scriptValues.key + '\'').append(' ')
                execScript.append('/tmp/lastExecutedScript.txt').append(System.lineSeparator())
-               execScript.append('RET=$?').append(System.lineSeparator);
-               execScript.append('if [ $RET -ne 0 ]; then').append(System.lineSeparator())
-               execScript.append('bash -x  .').append(File.separator).append(scriptValues.key).append(' >> /tmp/scriptLogs.txt');
+               execScript.append('CMDEXEC=$?').append(System.lineSeparator);
+               execScript.append('if [ $CMDEXEC -ne 0 ]; then').append(System.lineSeparator())
+               execScript.append("FAILED_SCRIPT='").append(scriptValues.key).append("'").append(System.lineSeparator())
+               execScript.append('set -ex').append(System.lineSeparator())
+               execScript.append('source .').append(File.separator).append(scriptValues.key).append(' >> /tmp/scriptLogs.txt');
+               execScript.append(System.lineSeparator()).append('set +ex')
                execScript.append(System.lineSeparator()).append('fi').append(System.lineSeparator())
-                execScript.append('RET=$?').append(System.lineSeparator);
-               execScript.append('if [ $RET -ne 0 ]; then').append(System.lineSeparator()).append('exit -1;')
-               execScript.append(System.lineSeparator()).append('fi').append(System.lineSeparator())
-               execScript.append('echo `date`').append('\'' + scriptValues.key + '\'').append(' >> /tmp/lastExecutedScript.txt').append(System.lineSeparator())
+               execScript.append('echo `date` ').append('\'' + scriptValues.key + '\'').append(' >> /tmp/lastExecutedScript.txt')
+               execScript.append(System.lineSeparator()).append("FAILED_SCRIPT=''").append(System.lineSeparator())
             }
             path.getParent().toFile().mkdirs()
             if(!path.toFile().exists()) {
                Files.createFile(path)
+            }
+            println "Uninstall path "  + uninstallPath.toFile().exists()
+            if(!uninstallPath.toFile().exists()) {
+               Files.createFile(uninstallPath)
             }
             Files.write(path, execScript.toString().getBytes());
          }
@@ -185,11 +196,39 @@ subprojects {
    }
    
    task zipScripts(type: Zip) {
+      dependsOn(createExecutorScript)
       if(project.ext.has("config")) {
          from("${buildDir}/libs/final/scripts")
          include '*'
          archiveName 'install.zip'
          destinationDir(file("${buildDir}/libs/final/module"))
       }
+   }
+   
+   task generateTemplates(type: Copy) {
+      trace("generate templates",project.name)
+      copyBaseTemplate.mustRunAfter(zipScripts)
+      copyProjectTemplate.mustRunAfter(copyBaseTemplate)
+      dependsOn(copyBaseTemplate,copyProjectTemplate,zipScripts)
+      //fileTree(rootProject.projectDir.absolutePath + File.separator + "base-js").matching {
+      //    include "**/*.js"
+      //}.each {
+      //   println it
+   //   }
+
+      from("${buildDir}/libs/templates/")
+      if(project.ext.has("config")) {
+         filter(ReplaceTokens, tokens: project.ext.config.TemplateReplace)
+      }
+      filter { line -> 
+         if(project.ext.has("config")) {
+            if(line.contains("@InstallModuleSha@")) {
+               def checksum = checksum("${buildDir}/libs/final/module/install.zip")
+               line = line.replace("@InstallModuleSha@", checksum)
+            }
+            return line
+         }
+      }
+      into "${buildDir}/libs/final/module"
    }
 }

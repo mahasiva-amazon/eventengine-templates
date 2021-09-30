@@ -1,10 +1,10 @@
 echo "Increase disk size of Cloud9"
 
-# Specify the desired volume size in GiB as a command-line argument. If not specified, default to 20 GiB.
-SIZE=${1:-@DiskSize@}
+# Specify the desired volume size in GiB as a command line argument. If not specified, default to 20 GiB.
+SIZE=${1:-@@DiskSize@@}
 
 # Get the ID of the environment host Amazon EC2 instance.
-INSTANCEID=$(curl http://169.254.169.254/latest/meta-data//instance-id)
+INSTANCEID=$(curl http://169.254.169.254/latest/meta-data/instance-id)
 
 # Get the ID of the Amazon EBS volume associated with the instance.
 VOLUMEID=$(aws ec2 describe-instances \
@@ -12,34 +12,56 @@ VOLUMEID=$(aws ec2 describe-instances \
   --query "Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId" \
   --output text)
 
-# Resize the EBS volume.
-aws ec2 modify-volume --volume-id $VOLUMEID --size $SIZE
-
-# Wait for the resize to finish.
-while [ \
-  "$(aws ec2 describe-volumes-modifications \
-    --volume-id $VOLUMEID \
-    --filters Name=modification-state,Values="optimizing","completed" \
-    --query "length(VolumesModifications)"\
-    --output text)" != "1" ]; do
-sleep 1
-echo "Waiting for EBS volume size increase!"
-done
-
-if [ $(readlink -f /dev/xvda) = "/dev/xvda" ]
+if [ $(aws ec2 describe-volumes-modifications --volume-id $VOLUMEID \
+        --filters Name=modification-state,Values="optimizing" \
+        --query "length(VolumesModifications)" \
+        --output text ) != "1" ]
 then
-  # Rewrite the partition table so that the partition takes up all the space that it can.
-  sudo growpart /dev/xvda 1
-
-  # Expand the size of the file system.
-  sudo resize2fs /dev/xvda1
-
+    # Resize the EBS volume.
+    aws ec2 modify-volume --volume-id $VOLUMEID --size $SIZE
+    # Wait for the resize to finish.
+    while [ \
+      "$(aws ec2 describe-volumes-modifications \
+        --volume-id $VOLUMEID \
+        --filters Name=modification-state,Values="optimizing","completed" \
+        --query "length(VolumesModifications)"\
+        --output text)" != "1" ]; do
+    sleep 1
+    done
+    
+    #Check if we're on an NVMe filesystem
+    if [ $(readlink -f /dev/xvda) = "/dev/xvda" ]
+    then
+      # Rewrite the partition table so that the partition takes up all the space that it can.
+      sudo growpart /dev/xvda 1
+    
+      # Expand the size of the file system.
+      # Check if we are on AL2
+      STR=$(cat /etc/os-release)
+      SUB="VERSION_ID=\"2\""
+      if [[ "$STR" == *"$SUB"* ]]
+      then
+        sudo xfs_growfs -d /
+      else
+        sudo resize2fs /dev/xvda1
+      fi
+    
+    else
+      # Rewrite the partition table so that the partition takes up all the space that it can.
+      sudo growpart /dev/nvme0n1 1
+    
+      # Expand the size of the file system.
+      # Check if we're on AL2
+      STR=$(cat /etc/os-release)
+      SUB="VERSION_ID=\"2\""
+      if [[ "$STR" == *"$SUB"* ]]
+      then
+        sudo xfs_growfs -d /
+      else
+        sudo resize2fs /dev/nvme0n1p1
+      fi
+    fi
+    echo "Disk size increased to 20GB"
 else
-  # Rewrite the partition table so that the partition takes up all the space that it can.
-  sudo growpart /dev/nvme0n1 1
-
-  # Expand the size of the file system.
-  sudo resize2fs /dev/nvme0n1p1
+  echo "Disk in optimizing state, hence modify volume skipped"
 fi
-
-echo "Disk size increased to 20GB"

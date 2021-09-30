@@ -1,0 +1,8 @@
+Script started on Fri 11 Jun 2021 05:39:03 AM UTC
+[01;32madmininstrator[00m:[01;34m~/environment/eventengine-templates[00m (main) $ ls
+base-js       base-templates  gradle   gradlew.bat  modules    settings.gradle
+base-scripts  build.gradle    gradlew  LICENSE	    README.md  typescript
+[01;32madmininstrator[00m:[01;34m~/environment/eventengine-templates[00m (main) $ exit
+exit
+
+Script done on Fri 11 Jun 2021 05:39:08 AM UTC

@@ -3,16 +3,37 @@ echo "Start Installation and Configuration of Cloud9"
 export LOG_FILE="/tmp/cloud9-configurescript-log.txt"
 sudo yum -y update
 
-sudo yum -y install jq gettext bash-completion
+echo "Update AWS CLI and utilities"
+
+sudo pip install --upgrade awscli && hash -r
+
+sudo yum -y install jq gettext bash-completion moreutils
+
+echo 'yq() {
+  docker run --rm -i -v "${PWD}":/workdir mikefarah/yq "$@"
+}' | tee -a ~/.bashrc && source ~/.bashrc
 
 export AWS_DEFAULT_REGION=$(curl -s 169.254.169.254/latest/dynamic/instance-identity/document | jq -r '.region')
 export ACCOUNT_ID=$(aws sts get-caller-identity --output text --query Account)
 export AWS_REGION=$AWS_DEFAULT_REGION
-echo "export ACCOUNT_ID=${ACCOUNT_ID}" | tee -a /home/ec2-user/.bash_profile
-echo "export AWS_REGION=${AWS_REGION}" | tee -a /home/ec2-user/.bash_profile
-echo "export export AWS_DEFAULT_REGION=${AWS_REGION}" | tee -a /home/ec2-user/.bash_profile
+grep 'export ACCOUNT_ID=' /home/ec2-user/.bash_profile
+CMDEXEC=$?
+if [ $CMDEXEC -ne 0 ]; then
+   echo "export ACCOUNT_ID=${ACCOUNT_ID}" | tee -a /home/ec2-user/.bash_profile
+fi
+grep 'export AWS_REGION=' /home/ec2-user/.bash_profile
+CMDEXEC=$?
+if [ $CMDEXEC -ne 0 ]; then
+   echo "export AWS_REGION=${AWS_REGION}" | tee -a /home/ec2-user/.bash_profile
+fi
+grep 'export AWS_DEFAULT_REGION=' /home/ec2-user/.bash_profile
+CMDEXEC=$?
+if [ $CMDEXEC -ne 0 ]; then
+   echo "export AWS_DEFAULT_REGION=${AWS_REGION}" | tee -a /home/ec2-user/.bash_profile
+fi
 aws configure set default.region ${AWS_REGION}
 aws configure get default.region
+export AZS=$(aws ec2 describe-availability-zones --query 'AvailabilityZones[].ZoneName' --output text --region $AWS_REGION)
 
 function log {
    echo "$1 -> $2" >> $LOG_FILE

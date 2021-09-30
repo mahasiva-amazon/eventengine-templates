@@ -54,7 +54,7 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     Properties:
-      BucketName: !Join ["-", ["runcommandlogs",!Ref ]]
+      BucketName: !Join ["-", ["runcommandlogs",!Ref 'AWS::AccountId']]
   LambdaEventHandlerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -79,17 +79,17 @@ Resources:
       Role: !GetAtt LambdaEventHandlerRole.Arn
       Handler: index.handler
       FunctionName: SetupCloud9Config
-      Timeout: 720
+      Timeout: 900
       Environment:
         Variables:
           S3BucketName: !Ref CommandLogS3Bucket
           #e.g. s3://ee-assets-prod-us-east-1/modules/6c911893578545d282b2d8310466e7ed/v3/
-          S3ModuleBucket: !Join ["/", ["s3:/",!Ref EEAssetsBucket, !Ref EEAssetsKeyPrefix,""]]
+          S3ModuleBucket: !Join ["/", ["s3:/",!Ref EEAssetsBucket, !Ref EEAssetsKeyPrefix]]
           InstallModuleSha: @InstallModuleSha@
-          Timeout1: @Timeout1@
-          Timeout2: @Timeout2@
-          Timeout3: @Timeout3@
-          Timeout4: @Timeout4@
+          Timeout1: 60000
+          Timeout2: 300000
+          Timeout3: 240000
+          Timeout4: 120000
       Code:
         ZipFile: |
           var AWS = require('aws-sdk');
@@ -118,8 +118,7 @@ Resources:
                 console.log("Instances Identified " + instanceId);
                 associateIamInstanceProfile(ec2,assocInstanceProfile,instanceId);
                 setTimeout(function() {rebootInstances(ec2,instanceId);},process.env.Timeout1);
-                setTimeout(function() {createSSMInstallScriptsDocs(instanceId);},process.env.Timeout1);
-                setTimeout(function() { console.log("Completed"); }, process.env.Timeout1);
+                setTimeout(function() {createSSMInstallScriptsDocs(instanceId);},process.env.Timeout2);
               }
             });
 
@@ -153,7 +152,7 @@ Resources:
           function createSSMInstallScriptsDocs(instanceId) {
             var ssm = new AWS.SSM();
             var params = {
-              Content: "{\"schemaVersion\": \"2.0\",\"version\": \"1.0.0\",\"packages\": {\"amazon\": {\"_any\": {\"x86_64\": {\"file\": \"install.zip\"}}}},\"files\": {\"install.zip\": {\"checksums\": {\"sha256\": \"process.env.InstallModuleSha\"}}}}",
+              Content: "{\"schemaVersion\": \"2.0\",\"version\": \"1.0.0\",\"packages\": {\"amazon\": {\"_any\": {\"x86_64\": {\"file\": \"install.zip\"}}}},\"files\": {\"install.zip\": {\"checksums\": {\"sha256\": \"" + process.env.InstallModuleSha + "\"}}}}",
               Name:"workshop-tools",
               Attachments: [
                 {
@@ -165,14 +164,16 @@ Resources:
               DocumentType: "Package"
             }
             ssm.createDocument(params,function(err, data) {
-              if(err)
+              if(err) {
                 console.log("Error " + err);
-              setTimeout(function() {
-                  if(!err) {
-                    console.log("Status of SSM Doc " + data.Status);
-                  }
-                  execInstallScripts(ssm,instanceId)
-              },process.env.Timeout3);
+              } else {
+                setTimeout(function() {
+                    if(!err) {
+                     console.log("Status of SSM Doc " + data.Status);
+                    } 
+                    execInstallScripts(ssm,instanceId)
+                },process.env.Timeout3);
+              }
             });
           }
           function execInstallScripts(ssm,instanceId) {
@@ -202,10 +203,10 @@ Resources:
                         ssm.sendCommand(params,function(err, data){
                           if(err) {
                             console.log(err, err.stack);
-                            setTimeout(function() {ssm.sendCommand(params,function(err, data){});},process.env.Timeout2);
+                            setTimeout(function() {ssm.sendCommand(params,function(err, data){});},process.env.Timeout4);
                           }
                         });
-                      },process.env.Timeout3);
+                      },process.env.Timeout4);
                     }
                   });
                 },process.env.Timeout4);
@@ -333,9 +334,10 @@ Resources:
   Cloud9EC2:
     Type: AWS::Cloud9::EnvironmentEC2
     Properties:
-      AutomaticStopTimeMinutes: 120
+      AutomaticStopTimeMinutes: 20160
       OwnerArn: !Join [":", ["arn:aws:sts:",!Ref 'AWS::AccountId',"assumed-role/TeamRole/MasterKey"]]
       InstanceType: t3.small
+      ImageId: amazonlinux-2-x86_64
       Name: WorkshopWorkspace
       SubnetId: !Ref Cloud9PublicSubnetOne
       Tags:
