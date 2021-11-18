@@ -19,10 +19,10 @@ ScriptFiles:
     DiskSize: '40'
   'install-eks-tool-set.sh': []
   'install-eks-cluster.sh': 
-    version: '1.16'
-    name: eksworkshop-eksctl
-    nodes: '2'
-    node_labels: lifecycle=OnDemand,intent=control-apps
+    Eks_Version: '1.16'
+    Eks_Name: eksworkshop-eksctl
+    Eks_DersiredCapacity: '3'
+    Eks_InstanceTypey: 't3.small'
   'install-basic-k8s-app.sh': []
     
       

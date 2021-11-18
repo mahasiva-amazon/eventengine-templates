@@ -15,18 +15,24 @@ apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
 metadata:
-  name: eksworkshop-eksctl
+  name: @Eks_Name@
   region: ${AWS_REGION}
-  version: "1.19"
+  version: "@Eks_Version@"
 
 availabilityZones: ["${AZS[0]}", "${AZS[1]}", "${AZS[2]}"]
 
 managedNodeGroups:
-- name: nodegroup
-  desiredCapacity: 3
-  instanceType: t3.small
+- name: @Eks_NG1_Name@
+  minSize: @Eks_MinSize@
+  maxSize: @Eks_MaxSize@
+  desiredCapacity: @Eks_DersiredCapacity@
+  instanceType: @Eks_InstanceType@
+  volumeSize: @Eks_VolumeSize@
   ssh:
     enableSsm: true
+  labels: {role: workshop}
+    tags:
+      nodegroup-role: workshop
 
 # To enable all of the control plane logs, uncomment below:
 # cloudWatch:
