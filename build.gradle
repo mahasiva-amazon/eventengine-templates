@@ -99,8 +99,9 @@ subprojects {
       //this is purely a configuration task
       trace("read configuration file",project.name)
       String fileName = "config.yaml" 
-      if(project.hasProperty(project.name + ".configFileName")) {
-         fileName = project.getProperty(project.name + ".configFileName")
+      String overrideFileName = project.getProperty("configFileNameOverrides");
+      if( overrideFileName != null && !"".equals(overrideFileName.trim())) {
+         fileName = projectDir.absolutePath + File.separator + overrideFileName
       } else {
          fileName = projectDir.absolutePath + File.separator + fileName
       }

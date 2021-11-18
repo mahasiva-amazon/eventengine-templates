@@ -1,0 +1,17 @@
+ModuleParams:
+  IAMPermissions:
+    PolicyStaements: |
+      [
+      ]
+    ManagedPolicyArns: 
+      - 'arn:aws:iam::aws:policy/AdministratorAccess'
+    TrustedServices: []
+    ServiceLinkedRoles: []
+    Checkpoints: []
+TemplateReplace: []
+ScriptFiles:
+  'increase-disk-size.sh': 
+    DiskSize: '20'
+  'eks-tool-set.sh': []
+  'eks-migration-setup.sh': []
+      

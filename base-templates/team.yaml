@@ -259,7 +259,7 @@ Resources:
   Cloud9VPC:
     Type: 'AWS::EC2::VPC'
     Properties:
-      CidrBlock: 192.168.0.0/16
+      CidrBlock: 10.0.0.0/16
       EnableDnsSupport: true
       EnableDnsHostnames: true
       Tags:
@@ -316,7 +316,7 @@ Resources:
         - 0
         - Fn::GetAZs: !Ref 'AWS::Region'
       MapPublicIpOnLaunch: true
-      CidrBlock: 192.168.0.0/19
+      CidrBlock: 10.0.0.0/19
       Tags:
         - Key: Name
           Value: ImmersionDay-VPC
@@ -351,6 +351,29 @@ Resources:
           Value: !Ref EEEventId
         - Key: platform:type
           Value: Cloud9
+  Cloud9PublicSubnetTwo:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.32.0/19
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9PublicSubnetTwoRouteTableAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref Cloud9PublicSubnetTwo
+      RouteTableId: !Ref Cloud9CommonRouteTable
 Outputs:
   Cloud9LambdaArn:
     Value: !GetAtt Cloud9SetupAgent.Arn

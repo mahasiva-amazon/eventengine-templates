@@ -1,7 +1,7 @@
 echo "Increase disk size of Cloud9"
 
 # Specify the desired volume size in GiB as a command line argument. If not specified, default to 20 GiB.
-SIZE=${1:-@@DiskSize@@}
+SIZE=${1:-@DiskSize@}
 
 # Get the ID of the environment host Amazon EC2 instance.
 INSTANCEID=$(curl http://169.254.169.254/latest/meta-data/instance-id)
@@ -12,10 +12,10 @@ VOLUMEID=$(aws ec2 describe-instances \
   --query "Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId" \
   --output text)
 
-if [ $(aws ec2 describe-volumes-modifications --volume-id $VOLUMEID \
+if [ "$(aws ec2 describe-volumes-modifications --volume-id $VOLUMEID \
         --filters Name=modification-state,Values="optimizing" \
         --query "length(VolumesModifications)" \
-        --output text ) != "1" ]
+        --output text )" != "1" ]
 then
     # Resize the EBS volume.
     aws ec2 modify-volume --volume-id $VOLUMEID --size $SIZE
