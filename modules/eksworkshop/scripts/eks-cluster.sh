@@ -31,8 +31,8 @@ managedNodeGroups:
   ssh:
     enableSsm: true
   labels: {role: workshop}
-    tags:
-      nodegroup-role: workshop
+  tags:
+    nodegroup-role: workshop
 
 # To enable all of the control plane logs, uncomment below:
 # cloudWatch:
