@@ -258,8 +258,8 @@ abstract class TestWorkshopTask extends DefaultTask {
     public void testWorkshop() {
       ChromeOptions options = new ChromeOptions()
       options.addArguments("--headless")
-      options.setBinary("/usr/bin/chromedriver");
+      //options.setBinary("/usr/bin/chromedriver");
       WebDriver driver = new ChromeDriver(options)
-      driver.get("http://localhost:8080")
+      driver.get("https://www.google.com")
    }
 }
