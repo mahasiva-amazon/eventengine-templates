@@ -17,7 +17,7 @@ ScriptFiles:
     Eks_Version: '1.19'
     Eks_Name: eksworkshop-eksctl
     Eks_DersiredCapacity: '3'
-    Eks_InstanceType: 't3.small'
+    Eks_InstanceType: 'm5.large'
     Eks_MinSize: '1'
     Eks_MaxSize: '3'
     Eks_VolumeSize: '20'

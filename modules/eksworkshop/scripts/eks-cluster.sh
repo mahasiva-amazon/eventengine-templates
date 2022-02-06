@@ -9,6 +9,28 @@ export MASTER_ARN=$(aws kms describe-key --key-id alias/eksworkshop --query KeyM
 
 echo "creating eks cluster in region ${AWS_REGION} with key ${MASTER_ARN} in AZs ${AZS[0]} ${AZS[1]} ${AZS[2]}"
 
+export CLUSTER_VPC_ID=($(aws ec2 describe-vpcs --region $AWS_REGION  --filters Name="tag:Name",Values="ImmersionDay-VPC" | jq -r '.Vpcs[].VpcId'))
+PUBLIC_SUBNETS[0]="$(aws ec2 describe-subnets --region $AWS_REGION  --filters Name=\"vpc-id\",Values=${CLUSTER_VPC_ID} Name=\"availability-zone\",Values=${AZS[0]} Name=\"tag:platform:visibility\",Values=\"public\" | jq -r '.Subnets[] | .SubnetId')"
+PUBLIC_SUBNETS[1]="$(aws ec2 describe-subnets --region $AWS_REGION  --filters Name=\"vpc-id\",Values=${CLUSTER_VPC_ID} Name=\"availability-zone\",Values=${AZS[1]} Name=\"tag:platform:visibility\",Values=\"public\" | jq -r '.Subnets[] | .SubnetId')"
+PUBLIC_SUBNETS[2]="$(aws ec2 describe-subnets --region $AWS_REGION  --filters Name=\"vpc-id\",Values=${CLUSTER_VPC_ID} Name=\"availability-zone\",Values=${AZS[2]} Name=\"tag:platform:visibility\",Values=\"public\" | jq -r '.Subnets[] | .SubnetId')"
+
+PRIVATE_SUBNETS[0]="$(aws ec2 describe-subnets --region $AWS_REGION  --filters Name=\"vpc-id\",Values=${CLUSTER_VPC_ID} Name=\"availability-zone\",Values=${AZS[0]} Name=\"tag:platform:visibility\",Values=\"private\" | jq -r '.Subnets[] | .SubnetId')"
+PRIVATE_SUBNETS[1]="$(aws ec2 describe-subnets --region $AWS_REGION  --filters Name=\"vpc-id\",Values=${CLUSTER_VPC_ID} Name=\"availability-zone\",Values=${AZS[1]} Name=\"tag:platform:visibility\",Values=\"private\" | jq -r '.Subnets[] | .SubnetId')"
+PRIVATE_SUBNETS[2]="$(aws ec2 describe-subnets --region $AWS_REGION  --filters Name=\"vpc-id\",Values=${CLUSTER_VPC_ID} Name=\"availability-zone\",Values=${AZS[2]} Name=\"tag:platform:visibility\",Values=\"private\" | jq -r '.Subnets[] | .SubnetId')"
+
+echo "Identified Cluster VPC ${CLUSTER_VPC_ID} and subnets ${PUBLIC_SUBNETS[0]}, ${PUBLIC_SUBNETS[1]}, ${PUBLIC_SUBNETS[2]}, ${PRIVATE_SUBNETS[0]}, ${PRIVATE_SUBNETS[1]}, ${PRIVATE_SUBNETS[2]}"
+
+aws ec2 create-tags --resources ${PUBLIC_SUBNETS[0]} --tags Key=kubernetes.io/cluster/@Eks_Name@,Value=shared Key=kubernetes.io/role/elb,Value=1
+aws ec2 create-tags --resources ${PUBLIC_SUBNETS[1]} --tags Key=kubernetes.io/cluster/@Eks_Name@,Value=shared Key=kubernetes.io/role/elb,Value=1
+aws ec2 create-tags --resources ${PUBLIC_SUBNETS[2]} --tags Key=kubernetes.io/cluster/@Eks_Name@,Value=shared Key=kubernetes.io/role/elb,Value=1
+
+aws ec2 create-tags --resources ${PRIVATE_SUBNETS[0]} --tags Key=kubernetes.io/cluster/@Eks_Name@,Value=shared Key=kubernetes.io/role/internal-elb,Value=1
+aws ec2 create-tags --resources ${PRIVATE_SUBNETS[1]} --tags Key=kubernetes.io/cluster/@Eks_Name@,Value=shared Key=kubernetes.io/role/internal-elb,Value=1
+aws ec2 create-tags --resources ${PRIVATE_SUBNETS[2]} --tags Key=kubernetes.io/cluster/@Eks_Name@,Value=shared Key=kubernetes.io/role/internal-elb,Value=1
+
+echo "Completed adding EKS tags to be make subnets compliant"
+
+
 cat << EOF > eksworkshop.yaml
 ---
 apiVersion: eksctl.io/v1alpha5
@@ -19,15 +41,31 @@ metadata:
   region: ${AWS_REGION}
   version: "@Eks_Version@"
 
-availabilityZones: ["${AZS[0]}", "${AZS[1]}", "${AZS[2]}"]
-
+vpc:
+  id: ${CLUSTER_VPC_ID}
+  subnets:
+    public:
+      ${AZS[0]}:
+          id: ${PUBLIC_SUBNETS[0]}
+      ${AZS[1]}:
+          id: ${PUBLIC_SUBNETS[1]}
+      ${AZS[2]}:
+          id: ${PUBLIC_SUBNETS[2]}
+    private:
+      ${AZS[0]}:
+          id: ${PRIVATE_SUBNETS[0]}
+      ${AZS[1]}:
+          id: ${PRIVATE_SUBNETS[1]}
+      ${AZS[2]}:
+          id: ${PRIVATE_SUBNETS[2]}
+          
 managedNodeGroups:
 - name: @Eks_NG1_Name@
   minSize: @Eks_MinSize@
   maxSize: @Eks_MaxSize@
   desiredCapacity: @Eks_DersiredCapacity@
   instanceType: @Eks_InstanceType@
-  volumeSize: @Eks_VolumeSize@
+  #volumeSize: @Eks_VolumeSize@
   ssh:
     enableSsm: true
   labels: {role: workshop}

@@ -9,6 +9,8 @@ buildscript {
       classpath group: 'com.fasterxml.jackson.dataformat', name: 'jackson-dataformat-yaml', version: '2.12.1'
       classpath group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.12.1'
       classpath group: 'org.apache.commons', name: 'commons-lang3', version: '3.12.0'
+      classpath group: 'org.seleniumhq.selenium', name: 'selenium-java', version: '3.141.59'
+      classpath group: 'org.seleniumhq.selenium', name: 'selenium-chrome-driver', version: '3.141.59'
    }
 }
 
@@ -28,16 +30,22 @@ import com.fasterxml.jackson.core.type.TypeReference
 import java.util.HashMap
 import org.apache.tools.ant.filters.ReplaceTokens
 import org.gradle.crypto.checksum.Checksum
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.security.DigestInputStream;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.Files;
-import java.io.IOException;
-import java.nio.file.StandardOpenOption;
+import java.io.FileInputStream
+import java.io.IOException
+import java.security.DigestInputStream
+import java.security.MessageDigest
+import java.security.NoSuchAlgorithmException
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.Files
+import java.io.IOException
+import java.nio.file.StandardOpenOption
+import org.openqa.selenium.chrome.ChromeOptions
+import org.openqa.selenium.WebDriver
+import org.openqa.selenium.chrome.ChromeDriver
+import org.gradle.api.tasks.TaskAction
+import org.gradle.api.DefaultTask
+
 
 ext {
    TRACE_ENABLED = false;
@@ -96,7 +104,7 @@ subprojects {
    }
    
    task readConfig() {
-      //this is purely a configuration task
+      //this is purely a configuration task and to initialize the builds
       trace("read configuration file",project.name)
       String fileName = "config.yaml" 
       String overrideFileName = project.getProperty("configFileNameOverrides");
@@ -231,5 +239,27 @@ subprojects {
          }
       }
       into "${buildDir}/libs/final/module"
+   }
+   
+   tasks.register('test',TestWorkshopTask)
+}
+
+/**
+ * Task that uses selenium to initiatialize a chrome browser in headless mode and 
+ */
+abstract class TestWorkshopTask extends DefaultTask {
+   
+    @TaskAction
+    def start() {
+        println 'hello from GreetingTask'
+        testWorkshop()
+    }
+    
+    public void testWorkshop() {
+      ChromeOptions options = new ChromeOptions()
+      options.addArguments("--headless")
+      options.setBinary("/usr/bin/chromedriver");
+      WebDriver driver = new ChromeDriver(options)
+      driver.get("http://localhost:8080")
    }
 }

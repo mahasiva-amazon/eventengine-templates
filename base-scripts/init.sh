@@ -5,7 +5,7 @@ sudo yum -y update
 
 echo "Update AWS CLI and utilities"
 
-sudo pip install --upgrade awscli && hash -r
+sudo pip3 install awscli --upgrade --user && hash -r
 
 sudo yum -y install jq gettext bash-completion moreutils
 
@@ -38,3 +38,8 @@ export AZS=$(aws ec2 describe-availability-zones --query 'AvailabilityZones[].Zo
 function log {
    echo "$1 -> $2" >> $LOG_FILE
 }
+
+export C9_IDS=($(aws cloud9 list-environments | jq -r '.environmentIds | join(" ")'))
+export C9_ID=($(aws cloud9 describe-environments --environment-ids ${C9_IDS} | jq -r '.environments[] | select(.name == "WorkshopWorkspace") | .id'))
+echo "Identified the following Cloud9 envs ${C9_IDS}, selected ${C9_ID}"
+#aws cloud9 update-environment  --environment-id ${C9_ID} --managed-credentials-action DISABLE

@@ -326,6 +326,8 @@ Resources:
           Value: AWS
         - Key: platform:name
           Value: Immersion-Day
+        - Key: platform:visibility
+          Value: public
   Cloud9PublicSubnetOneRouteTableAssoc:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
@@ -369,11 +371,262 @@ Resources:
           Value: AWS
         - Key: platform:name
           Value: Immersion-Day
+        - Key: platform:visibility
+          Value: public
   Cloud9PublicSubnetTwoRouteTableAssoc:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
       SubnetId: !Ref Cloud9PublicSubnetTwo
       RouteTableId: !Ref Cloud9CommonRouteTable
+  Cloud9PublicSubnetThree:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      AvailabilityZone: !Select
+        - 2
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.64.0/19
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+        - Key: platform:visibility
+          Value: public
+  Cloud9PublicSubnetThreeRouteTableAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref Cloud9PublicSubnetThree
+      RouteTableId: !Ref Cloud9CommonRouteTable
+  Cloud9AZOneNATEIP:
+     DependsOn: AttachGateway
+     Type: AWS::EC2::EIP
+     Properties:
+        Domain: vpc
+        Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+        - Key: platform:visibility
+          Value: public
+  Cloud9AZTwoNATEIP:
+     DependsOn: AttachGateway
+     Type: AWS::EC2::EIP
+     Properties:
+        Domain: vpc
+        Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9AZThreeNATEIP:
+     DependsOn: AttachGateway
+     Type: AWS::EC2::EIP
+     Properties:
+        Domain: vpc
+        Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9AZOneNAT:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt Cloud9AZOneNATEIP.AllocationId
+      SubnetId: !Ref Cloud9PublicSubnetOne
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9PrivateClusterSubnetOne:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.96.0/19
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+        - Key: platform:visibility
+          Value: private
+  Cloud9PrivateClusterSubnetOneRouteTbl:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9PrivateClusterSubnetOneNatRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: Cloud9PrivateClusterSubnetOneRouteTbl
+    Properties:
+      RouteTableId: !Ref Cloud9PrivateClusterSubnetOneRouteTbl
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref Cloud9AZOneNAT
+  Cloud9PrivateClusterSubnetOneRouteTblAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    DependsOn: Cloud9PrivateClusterSubnetOneRouteTbl
+    Properties:
+      SubnetId: !Ref Cloud9PrivateClusterSubnetOne
+      RouteTableId: !Ref Cloud9PrivateClusterSubnetOneRouteTbl
+  Cloud9AZTwoNAT:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt Cloud9AZTwoNATEIP.AllocationId
+      SubnetId: !Ref Cloud9PublicSubnetTwo
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9PrivateClusterSubnetTwo:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.128.0/19
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+        - Key: platform:visibility
+          Value: private
+  Cloud9PrivateClusterSubnetTwoRouteTbl:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9PrivateClusterSubnetTwoNatRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: Cloud9PrivateClusterSubnetTwoRouteTbl
+    Properties:
+      RouteTableId: !Ref Cloud9PrivateClusterSubnetTwoRouteTbl
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref Cloud9AZTwoNAT
+  Cloud9PrivateClusterSubnetTwoRouteTblAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    DependsOn: Cloud9PrivateClusterSubnetTwoRouteTbl
+    Properties:
+      SubnetId: !Ref Cloud9PrivateClusterSubnetTwo
+      RouteTableId: !Ref Cloud9PrivateClusterSubnetTwoRouteTbl
+  Cloud9AZThreeNAT:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt Cloud9AZThreeNATEIP.AllocationId
+      SubnetId: !Ref Cloud9PublicSubnetThree
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9PrivateClusterSubnetThree:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      AvailabilityZone: !Select
+        - 2
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.160.0/19
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+        - Key: platform:visibility
+          Value: private
+  Cloud9PrivateClusterSubnetThreeRouteTbl:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Cloud9VPC
+      Tags:
+        - Key: Name
+          Value: ImmersionDay-VPC
+        - Key: owner:name
+          Value: AWS
+        - Key: owner:billing:cost-center
+          Value: AWS
+        - Key: platform:name
+          Value: Immersion-Day
+  Cloud9PrivateClusterSubnetThreeNatRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: Cloud9PrivateClusterSubnetThreeRouteTbl
+    Properties:
+      RouteTableId: !Ref Cloud9PrivateClusterSubnetThreeRouteTbl
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref Cloud9AZThreeNAT
+  Cloud9PrivateClusterSubnetThreeRouteTblAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    DependsOn: Cloud9PrivateClusterSubnetThreeRouteTbl
+    Properties:
+      SubnetId: !Ref Cloud9PrivateClusterSubnetThree
+      RouteTableId: !Ref Cloud9PrivateClusterSubnetThreeRouteTbl
 Outputs:
   Cloud9LambdaArn:
     Value: !GetAtt Cloud9SetupAgent.Arn
