@@ -258,7 +258,7 @@ abstract class TestWorkshopTask extends DefaultTask {
     
    @TaskAction
    def test() {
-      println 'hello from GreetingTask'
+      println 'Execute task action'
       testWorkshop()
    }
     
