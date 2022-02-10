@@ -248,17 +248,23 @@ subprojects {
  * Task that uses selenium to initiatialize a chrome browser in headless mode and 
  */
 abstract class TestWorkshopTask extends DefaultTask {
+    private String workshopUrl;
    
-    @TaskAction
-    def start() {
-        println 'hello from GreetingTask'
-        testWorkshop()
-    }
+   
+   TestWorkshopTask() {
+      println 'initialize the test code'
+      "curl https://artifacts.us-east-1.prod.workshops.aws/cli/linux/preview_build -O preview_build".execute();
+   }
+    
+   @TaskAction
+   def test() {
+      println 'hello from GreetingTask'
+      testWorkshop()
+   }
     
     public void testWorkshop() {
       ChromeOptions options = new ChromeOptions()
-      options.addArguments("--headless")
-      //options.setBinary("/usr/bin/chromedriver");
+      options.addArguments("--headless");
       WebDriver driver = new ChromeDriver(options)
       driver.get("https://www.google.com")
    }
