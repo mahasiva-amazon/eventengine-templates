@@ -253,7 +253,7 @@ subprojects {
                println 'Running command ' + command
                proc = command.execute()
                proc.waitFor()
-               command = "sudo chmod +x " + shellSpec
+               command = "chmod +x " + shellSpec
                println 'Running command ' + command
                proc = command.execute()
                proc.waitFor()
@@ -324,7 +324,7 @@ class WorkshopCodeExtractor implements AutoCloseable{
     */
    public WorkshopCodeExtractor initDriver() {
       ChromeOptions options = new ChromeOptions()
-      options.addArguments("--headless");
+      //options.addArguments("--headless");
       driver = new ChromeDriver(options)
       driver.get(workshopUrl)
       return this
@@ -353,8 +353,11 @@ class WorkshopCodeExtractor implements AutoCloseable{
       }
       return this;
    }
-   
+ 
    public void close() {
+      try{
+          Thread.sleep(8000);
+      }catch(Exception excp) {}
       driver.quit();
    }
 }
