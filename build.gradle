@@ -47,10 +47,15 @@ import org.openqa.selenium.WebElement
 import org.openqa.selenium.support.ui.WebDriverWait
 import org.openqa.selenium.support.ui.ExpectedConditions
 import org.openqa.selenium.By
+import org.openqa.selenium.NoSuchElementException
 import org.openqa.selenium.chrome.ChromeDriver
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.DefaultTask
-
+import java.awt.Toolkit
+import java.awt.datatransfer.Clipboard
+import java.awt.datatransfer.Transferable
+import java.awt.datatransfer.DataFlavor
+import org.openqa.selenium.StaleElementReferenceException
 
 ext {
    TRACE_ENABLED = false;
@@ -280,9 +285,10 @@ subprojects {
             println 'Using workshop url ' + workshopUrl
             WorkshopCodeExtractor wrshpPage = new WorkshopCodeExtractor(
             "//nav[@aria-hidden='false']//div[contains(@class,'awsui_expandable-link-group')]",
-            "//button",
             "//a",
-            "//main//code[@class='language-bash' or @class='sh']/../..//button[@data-testid='copy-button']",
+            "//main//code[@class='language-bash' or @class='sh']/../..//button[@data-testid='copy-button']  |  //main",
+            "//main//div[@role='button' and @aria-expanded='false'] | //main//div[@role='button' and @aria-expanded='true'] | //main",
+            "//button[@data-testid='preview-component-next-btn' or @data-testid='component-next-btn']",
             workshopUrl
             )
             try {
@@ -303,6 +309,8 @@ class WorkshopCodeExtractor implements AutoCloseable{
    private final String navLinkTopic
    private final String codeCopyButton
    private final String workshopUrl
+   private final String nextBttn
+   private final String subPageLinks
    private final Map<String, List<String>> codeToTopicMapping
    
    private WebDriver driver
@@ -310,13 +318,14 @@ class WorkshopCodeExtractor implements AutoCloseable{
    /**
     * Initiatize with navigation and 
     */
-   public WorkshopCodeExtractor(String navLinksPath, String navLinksPathExpander, String navLinkTopic, String codeCopyButton, String workshopUrl) {
+   public WorkshopCodeExtractor(String navLinksPath, String navLinkTopic, String codeCopyButton, String subPageLinks, String nextBttn, String workshopUrl) {
       this.navLinksPath = navLinksPath
-      this.navLinksPathExpander = navLinksPathExpander
       this.navLinkTopic = navLinkTopic
       this.codeCopyButton = codeCopyButton
       this.workshopUrl = workshopUrl
+      this.subPageLinks = subPageLinks
       this.codeToTopicMapping = new HashMap<String, List<String>>()
+      this.nextBttn = nextBttn
    }
    
    /**
@@ -324,40 +333,77 @@ class WorkshopCodeExtractor implements AutoCloseable{
     */
    public WorkshopCodeExtractor initDriver() {
       ChromeOptions options = new ChromeOptions()
-      //options.addArguments("--headless");
+      options.addArguments("--headless");
       driver = new ChromeDriver(options)
+      driver.manage().window().maximize()
       driver.get(workshopUrl)
       return this
    }
    
    public WorkshopCodeExtractor scrapeCode() {
-      WebDriverWait wait = new WebDriverWait(driver, 10)
+      WebDriverWait wait = new WebDriverWait(driver, 5)
       List<WebElement> navLinks = wait.until(
-                     ExpectedConditions.visibilityOfAllElementsLocatedBy(By.xpath(navLinksPath)))
+             ExpectedConditions.visibilityOfAllElementsLocatedBy(By.xpath(navLinksPath)))
       int count = 1
       for(WebElement navLink : navLinks) {
-         /*String xpath = "(" + navLinksPath + ")[" + count + "]" + navLinksPathExpander
-         println "Looking for xpath " + xpath
-         List<WebElement> navLinkBttn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath(xpath)))
-         navLinkBttn.get(0).click();
-         println "Bttn " + navLinkBttn.get(0).isDisplayed() + " " + navLinkBttn.size()*/
          String xpath = "(" + navLinksPath + ")[" + count + "]" + navLinkTopic
-         println "Looking for xpath " + xpath
-         List<WebElement> navLinkTopics = wait.until(ExpectedConditions.visibilityOfAllElementsLocatedBy(By.xpath(xpath)))
-          println "Nav Links Topics " + navLinkTopics.size()
+         //println "Looking for xpath " + xpath
+         List<WebElement> navLinkTopics = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath(xpath)))
+         //println "Nav Links Topics " + navLinkTopics.size()
          for(WebElement navLinkTopic : navLinkTopics) {
-            println navLinkTopic.getText()
+	    wait.until(ExpectedConditions.visibilityOf(navLinkTopic))
+	    navLinkTopic.click();
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath(nextBttn)))
+            String topicText = navLinkTopic.getText()
+	    println topicText
+            try {
+                List<WebElement> subPageLinksBtns = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath(subPageLinks)))
+                for(int subPgCnt = 1; subPgCnt < subPageLinksBtns.size(); subPgCnt++) {
+                   WebElement btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + subPageLinks + ")[" + (subPgCnt + 1) + "]" )))
+                   try {
+                     if("false".equals(btn.getAttribute("aria-expanded"))) {
+                       btn.click()
+		     }
+                    }catch(StaleElementReferenceException sexcp) {
+                      println "Element refreshed..."
+                      btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + subPageLinks + ")[" + (subPgCnt + 1) + "]" )))
+                      if("false".equals(btn.getAttribute("aria-expanded"))) {
+                        btn.click()
+		      }
+                   }
+
+                }
+            	List<WebElement> codeButtons = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath(codeCopyButton)))
+                println "Topic " + topicText + " has " + codeButtons.size() + " code blocks "
+                for(int codeCnt = 1; codeCnt < codeButtons.size(); codeCnt++) {
+		   WebElement btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + codeCopyButton + ")[" + (codeCnt + 1) + "]" )))
+                   try {
+		      btn.click()
+	           } catch(StaleElementReferenceException sexcp) {
+                      println "Element refreshed..."
+                      btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + codeCopyButton + ")[" + (codeCnt + 1) + "]" )))
+                      btn.click()
+		   }
+		   Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard()
+                   Transferable contents = clipboard.getContents(null)
+                   String codeContent =  (String) contents.getTransferData(DataFlavor.stringFlavor) 
+                   println codeContent                  	
+		}
+	    }catch(NoSuchElementException nexcp) {
+	       println "No code blocks found in topic " + topicText + "..."
+	    }
          }
          count++;
-         break;
       }
       return this;
    }
  
    public void close() {
-      try{
+      /*
+       try{
           Thread.sleep(8000);
       }catch(Exception excp) {}
+      */
       driver.quit();
    }
 }
