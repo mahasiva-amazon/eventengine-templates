@@ -293,6 +293,8 @@ subprojects {
             )
             try {
                wrshpPage.initDriver().scrapeCode()
+            }catch(Exception excp) {
+               excp.printStackTrace()
             } finally {
                //TBD: Cleanup finally 
                wrshpPage.close()
