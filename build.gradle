@@ -11,6 +11,7 @@ buildscript {
       classpath group: 'org.apache.commons', name: 'commons-lang3', version: '3.12.0'
       classpath group: 'org.seleniumhq.selenium', name: 'selenium-java', version: '3.141.59'
       classpath group: 'org.seleniumhq.selenium', name: 'selenium-chrome-driver', version: '3.141.59'
+      classpath group: 'org.commonmark', name: 'commonmark', version: '0.18.1'
    }
 }
 
@@ -56,6 +57,18 @@ import java.awt.datatransfer.Clipboard
 import java.awt.datatransfer.Transferable
 import java.awt.datatransfer.DataFlavor
 import org.openqa.selenium.StaleElementReferenceException
+import org.commonmark.node.*
+import org.commonmark.parser.Parser
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.io.File
+import java.io.FileReader
+import java.util.stream.Collectors
+import org.commonmark.node.Node
+import org.commonmark.parser.Parser
+import org.commonmark.node.AbstractVisitor
+import org.commonmark.node.Code
 
 ext {
    TRACE_ENABLED = false;
@@ -292,15 +305,74 @@ subprojects {
             workshopUrl
             )
             try {
-               wrshpPage.initDriver().scrapeCode()
+               //wrshpPage.initDriver().readClipBoard()
+               wrshpPage.readClipBoard()
             }catch(Exception excp) {
                excp.printStackTrace()
+               throw excp
             } finally {
                //TBD: Cleanup finally 
                wrshpPage.close()
             }
          }
       }
+   }
+}
+
+class WorkshopCodeMarkupCodeExtractor {
+
+   private final String workshopRepo
+   private List<String> mdFiles
+   private final Map<String, List<String>> codeToTopicMapping
+   
+   public WorkshopCodeMarkupCodeExtractor(String workshopRepo) {
+      this.workshopRepo = workshopRepo
+      this.codeToTopicMapping = new HashMap<String, List<String>>()
+   }
+   
+   public WorkshopCodeMarkupCodeExtractor initParser() {
+      Files.walk(Paths.get(workshopRepo)).withCloseable { walk -> 
+         this.mdFiles = walk
+            .filter({ file -> !Files.isDirectory(file) })
+            .map( { file -> file.toString().toLowerCase() })
+            .filter({ file -> file.endsWith("md") })
+            .collect(Collectors.toList())
+         //println mdFiles
+      }
+      return this;
+   }
+   
+   public WorkshopCodeMarkupCodeExtractor scrapeCode() throws Exception{
+      Parser parser = Parser.builder().build();
+      /*for(String mdFile : mdFiles) {
+         Reader reader = null
+         try {
+            reader = new FileReader(new File(mdFile))
+            Node mdAST = parser.parseReader(reader)
+            //mdAST.accept(new CodeScrapeVisitor())
+         }finally {
+            if(reader != null) {
+               reader.close()
+            }
+         }
+      }*/
+      Node mdAST = parser.parse("```:::code{showCopyAction=true showLineNumbers=true language=java} \
+         class HelloWorld { \
+    public static void main(String[] args) { \
+        System.out.println(\"Hello, World!\"); \
+    } \
+   }\
+:::\
+```")
+      mdAST.accept(new CodeScrapeVisitor())
+      return this;
+   }
+}
+
+class CodeScrapeVisitor extends AbstractVisitor {
+   public void visit(Code code) {
+      println "....Here"
+      println code.getLiteral() 
    }
 }
 
@@ -356,52 +428,56 @@ class WorkshopCodeExtractor implements AutoCloseable{
          List<WebElement> navLinkTopics = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath(xpath)))
          //println "Nav Links Topics " + navLinkTopics.size()
          for(WebElement navLinkTopic : navLinkTopics) {
-	    wait.until(ExpectedConditions.visibilityOf(navLinkTopic))
-	    navLinkTopic.click();
+	         wait.until(ExpectedConditions.visibilityOf(navLinkTopic))
+	         navLinkTopic.click();
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath(nextBttn)))
             String topicText = navLinkTopic.getText()
-	    println topicText
+	         println topicText
             try {
                 List<WebElement> subPageLinksBtns = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath(subPageLinks)))
                 for(int subPgCnt = 1; subPgCnt < subPageLinksBtns.size(); subPgCnt++) {
-                   WebElement btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + subPageLinks + ")[" + (subPgCnt + 1) + "]" )))
-                   try {
+                  WebElement btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + subPageLinks + ")[" + (subPgCnt + 1) + "]" )))
+                  try {
                      if("false".equals(btn.getAttribute("aria-expanded"))) {
                        btn.click()
-		     }
-                    }catch(StaleElementReferenceException sexcp) {
-                      println "Element refreshed..."
-                      btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + subPageLinks + ")[" + (subPgCnt + 1) + "]" )))
-                      if("false".equals(btn.getAttribute("aria-expanded"))) {
+		               }
+                  }catch(StaleElementReferenceException sexcp) {
+                     println "Element refreshed..."
+                     btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + subPageLinks + ")[" + (subPgCnt + 1) + "]" )))
+                     if("false".equals(btn.getAttribute("aria-expanded"))) {
                         btn.click()
-		      }
-                   }
-
-                }
+		               }
+                  }
+               }
             	List<WebElement> codeButtons = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath(codeCopyButton)))
-                println "Topic " + topicText + " has " + codeButtons.size() + " code blocks "
-                for(int codeCnt = 1; codeCnt < codeButtons.size(); codeCnt++) {
-		   WebElement btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + codeCopyButton + ")[" + (codeCnt + 1) + "]" )))
-                   try {
-		      btn.click()
-	           } catch(StaleElementReferenceException sexcp) {
-                      println "Element refreshed..."
-                      btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + codeCopyButton + ")[" + (codeCnt + 1) + "]" )))
-                      btn.click()
-		   }
-		   Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard()
-                   Transferable contents = clipboard.getContents(null)
-                   String codeContent =  (String) contents.getTransferData(DataFlavor.stringFlavor) 
-                   println codeContent                  	
-		}
-	    }catch(NoSuchElementException nexcp) {
-	       println "No code blocks found in topic " + topicText + "..."
-	    }
+               println "Topic " + topicText + " has " + codeButtons.size() + " code blocks "
+               for(int codeCnt = 1; codeCnt < codeButtons.size(); codeCnt++) {
+		            WebElement btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + codeCopyButton + ")[" + (codeCnt + 1) + "]" )))
+                  try {
+		               btn.click()
+	               } catch(StaleElementReferenceException sexcp) {
+                     println "Element refreshed..."
+                     btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + codeCopyButton + ")[" + (codeCnt + 1) + "]" )))
+                     btn.click()
+		            }
+   		         readClipBoard()
+		         }
+	         }catch(NoSuchElementException nexcp) {
+	            println "No code blocks found in topic " + topicText + "..."
+	         }
          }
          count++;
       }
       println "Scrape code complete..."
       return this;
+   }
+   
+   public String readClipBoard() {
+      Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard()
+      Transferable contents = clipboard.getContents(null)
+      String codeContent =  (String) contents.getTransferData(DataFlavor.stringFlavor) 
+      println codeContent  
+      return codeContent
    }
  
    public void close() {
