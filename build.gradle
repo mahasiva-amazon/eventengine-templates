@@ -332,15 +332,18 @@ class WorkshopCodeExtractor implements AutoCloseable{
     * Initiaize Driver
     */
    public WorkshopCodeExtractor initDriver() {
+      println "Initialization start...."
       ChromeOptions options = new ChromeOptions()
       options.addArguments("--headless");
       driver = new ChromeDriver(options)
       driver.manage().window().maximize()
       driver.get(workshopUrl)
+      println "Initialization complete..."
       return this
    }
    
    public WorkshopCodeExtractor scrapeCode() {
+      println "Scrape code start..."
       WebDriverWait wait = new WebDriverWait(driver, 5)
       List<WebElement> navLinks = wait.until(
              ExpectedConditions.visibilityOfAllElementsLocatedBy(By.xpath(navLinksPath)))
@@ -395,6 +398,7 @@ class WorkshopCodeExtractor implements AutoCloseable{
          }
          count++;
       }
+      println "Scrape code complete..."
       return this;
    }
  
