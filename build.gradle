@@ -272,7 +272,7 @@ subprojects {
    }
    
    task generateTests() {
-      dependsOn(initTest)
+      //dependsOn(initTest)
       doFirst {
          def command = null
          def proc = null
