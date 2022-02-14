@@ -26,5 +26,6 @@ ScriptFiles:
 TestConfiguration: 
   LocalMarkdownServer: "https://artifacts.us-east-1.prod.workshops.aws/cli/linux/preview_build"
   WorkshopGitLocation: "/home/ec2-user/environment/worksshop-content/eksid"
-  WorkshopRemoteUrl: "https://catalog.us-east-1.prod.workshops.aws/v2/workshops/76a5dd80-3249-4101-8726-9be3eeee09b2/en-US/"
-  TestRemote: false
+  WorkshopRemoteUrl: 'https://catalog.us-east-1.prod.workshops.aws/v2/workshops/76a5dd80-3249-4101-8726-9be3eeee09b2/en-US/helm'
+  #WorkshopRemoteUrl: "https://catalog.us-east-1.prod.workshops.aws/v2/workshops/76a5dd80-3249-4101-8726-9be3eeee09b2/en-US/"
+  TestRemote: true
