@@ -281,7 +281,7 @@ subprojects {
             WorkshopCodeExtractor wrshpPage = new WorkshopCodeExtractor(
             "//nav[@aria-hidden='false']//div[contains(@class,'awsui_expandable-link-group')]",
             "//button",
-            "//",
+            "//a",
             "//main//code[@class='language-bash' or @class='sh']/../..//button[@data-testid='copy-button']",
             workshopUrl
             )
@@ -334,17 +334,21 @@ class WorkshopCodeExtractor implements AutoCloseable{
       WebDriverWait wait = new WebDriverWait(driver, 10)
       List<WebElement> navLinks = wait.until(
                      ExpectedConditions.visibilityOfAllElementsLocatedBy(By.xpath(navLinksPath)))
-      //List<WebElement> topics = driver.findElements(By.xpath())
+      int count = 1
       for(WebElement navLink : navLinks) {
-         List<WebElement> navLinkBttn = wait.until(ExpectedConditions.visibilityOfNestedElementsLocatedBy(navLink,By.xpath(navLinksPathExpander)))
+         /*String xpath = "(" + navLinksPath + ")[" + count + "]" + navLinksPathExpander
+         println "Looking for xpath " + xpath
+         List<WebElement> navLinkBttn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath(xpath)))
          navLinkBttn.get(0).click();
-         println "Bttn " + navLinkBttn.get(0).isDisplayed()
-         //List<WebElement> navLinkTopics = wait.until(ExpectedConditions.visibilityOfNestedElementsLocatedBy(navLink,By.xpath(navLinkTopic)))
-         List<WebElement> navLinkTopics = wait.until(ExpectedConditions.visibilityOfAllElementsLocatedBy(
-         By.xpath("//nav[@aria-hidden='false']//div[contains(@class,'awsui_expandable-link-group')]//li/a")))
+         println "Bttn " + navLinkBttn.get(0).isDisplayed() + " " + navLinkBttn.size()*/
+         String xpath = "(" + navLinksPath + ")[" + count + "]" + navLinkTopic
+         println "Looking for xpath " + xpath
+         List<WebElement> navLinkTopics = wait.until(ExpectedConditions.visibilityOfAllElementsLocatedBy(By.xpath(xpath)))
+          println "Nav Links Topics " + navLinkTopics.size()
          for(WebElement navLinkTopic : navLinkTopics) {
             println navLinkTopic.getText()
          }
+         count++;
          break;
       }
       return this;
