@@ -44,7 +44,6 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.Files
 import java.io.IOException
-import java.util.StringBuilder
 import java.nio.file.StandardOpenOption
 import org.openqa.selenium.chrome.ChromeOptions
 import org.openqa.selenium.WebDriver
@@ -317,34 +316,8 @@ subprojects {
          def command = null
          def proc = null
          if(project.ext.has("config") && project.ext.config.TestConfiguration != null) {
-<<<<<<< HEAD
-            WorkshopCodeMarkupCodeExtractor codegen = new WorkshopCodeMarkupCodeExtractor(project.ext.config.TestConfiguration.WorkshopGitLocation)
-            codegen.initParser().scrapeCode()
-=======
-            String workshopUrl = project.ext.config.TestConfiguration.WorkshopRemoteUrl
-            boolean testRemote =  project.ext.config.TestConfiguration.TestRemote
-            if(!testRemote) {
-               workshopUrl = "http://localhost:8080"
-            }
-            println 'Using workshop url ' + workshopUrl
-            WorkshopCodeExtractor wrshpPage = new WorkshopCodeExtractor(
-            "//nav[@aria-hidden='false']//div[contains(@class,'awsui_expandable-link-group')]",
-            "//a",
-            "//main//code[@class='language-bash' or @class='sh']/../..//button[@data-testid='copy-button']  |  //main",
-            "//main//div[@role='button' and @aria-expanded='false'] | //main//div[@role='button' and @aria-expanded='true'] | //main",
-            "//button[@data-testid='preview-component-next-btn' or @data-testid='component-next-btn']",
-            workshopUrl
-            )
-            try {
-               wrshpPage.initDriver().scrapeCode()
-            }catch(Exception excp) {
-               excp.printStackTrace()
-               throw excp
-            } finally {
-               //TBD: Cleanup finally 
-               wrshpPage.close()
-            }
->>>>>>> a0aade53a36d508579c546e65eda7b35c2f0bf6c
+            WorkshopCodeMarkupCodeExtractor generator = new WorkshopCodeMarkupCodeExtractor(project.ext.config.TestConfiguration.WorkshopGitLocation)
+            generator.initParser().scrapeCode()
          }
       }
    }
@@ -367,7 +340,7 @@ class WorkshopCodeMarkupCodeExtractor {
    }
    
    private final String workshopRepo
-   private final Map<String, ModuleInfo>> moduleMapping
+   private final Map<String, ModuleInfo> moduleMapping
 
    private List<String> mdFiles   
    private File currFile
@@ -385,8 +358,7 @@ class WorkshopCodeMarkupCodeExtractor {
    
    public WorkshopCodeMarkupCodeExtractor(String workshopRepo) {
       this.workshopRepo = workshopRepo
-      this.codeToTopicMapping = new HashMap<String, List<String>>()
-      this.moduleMapping = new TreeMap<String,StringBuilder>
+      this.moduleMapping = new TreeMap<String,StringBuilder>()
    }
    
    public WorkshopCodeMarkupCodeExtractor initParser() {
@@ -421,13 +393,8 @@ class WorkshopCodeMarkupCodeExtractor {
       for(String mdFile : mdFiles) {
          Reader reader = null
          try {
-            File file = new File(mdFile)
-            currDir = file.getParentFile().getName()
-            currFile = file.getName()
-            if(currFile.startsWith("index")) {
-               isIndexFile = true
-            }
-            reader = new FileReader(file)
+            currFile = new File(mdFile)
+            reader = new FileReader(currFile)
             Node mdAST = parser.parseReader(reader)
             titleBlkVisitor.visit(mdAST)
             headingBlkVisitor.visit(mdAST)
@@ -459,7 +426,6 @@ class WorkshopCodeMarkupCodeExtractor {
       indentedCodeBlkVisitor.visitChildren(node);
    }
    
-<<<<<<< HEAD
    public void visitFencedBlock(FencedCodeBlock node) {
       println "----------FCBL--------------"
       println "Info -->" + node.getInfo() 
@@ -473,6 +439,7 @@ class WorkshopCodeMarkupCodeExtractor {
     public void visitHeading(Heading node) {
       println "----------HBL--------------"
       String title = null, weight = null;
+      String content = node.getContentChars().toString()
       int indexOfTitle = content.indexOf("title: ")
       int indexOfWeight = content.indexOf("weight: ")
       if(indexOfTitle > -1) {
@@ -489,7 +456,7 @@ class WorkshopCodeMarkupCodeExtractor {
       } else {
          weight = "0000"
       }
-      generateModuleKey(
+      println "Module Key --> " + generateModuleKey(currFile,weight)
       println "Title " + title + " Weight " + weight
       println "----------HBL--------------"
       headingBlkVisitor.visitChildren(node);
@@ -497,16 +464,16 @@ class WorkshopCodeMarkupCodeExtractor {
    
     public String generateModuleKey(File file, String weight) {
       StringBuilder moduleKey = new StringBuilder("/");
-      String parentFileName = file.toParentFile().getName()
-      String parentFilePath = file.toParentFile().getPath().replace("\\",File.separator)
+      String parentFileName = file.getParentFile().getName()
+      String parentFilePath = file.getParentFile().getPath().replace("\\",File.separator)
       if(weight == null || weight == "") {
          weight = "0000"
       }
-      if(weight.length == 3) {
+      if(weight.length() == 3) {
          weight = "0" + weight
-      } else if(weight.length == 2) {
+      } else if(weight.length() == 2) {
          weight = "00" + weight
-      } else if(weight.length == 1) {
+      } else if(weight.length() == 1) {
          weight = "000" + weight
       }
       
@@ -522,3 +489,4 @@ class WorkshopCodeMarkupCodeExtractor {
       }
       return moduleKey
     }
+}
