@@ -317,8 +317,34 @@ subprojects {
          def command = null
          def proc = null
          if(project.ext.has("config") && project.ext.config.TestConfiguration != null) {
+<<<<<<< HEAD
             WorkshopCodeMarkupCodeExtractor codegen = new WorkshopCodeMarkupCodeExtractor(project.ext.config.TestConfiguration.WorkshopGitLocation)
             codegen.initParser().scrapeCode()
+=======
+            String workshopUrl = project.ext.config.TestConfiguration.WorkshopRemoteUrl
+            boolean testRemote =  project.ext.config.TestConfiguration.TestRemote
+            if(!testRemote) {
+               workshopUrl = "http://localhost:8080"
+            }
+            println 'Using workshop url ' + workshopUrl
+            WorkshopCodeExtractor wrshpPage = new WorkshopCodeExtractor(
+            "//nav[@aria-hidden='false']//div[contains(@class,'awsui_expandable-link-group')]",
+            "//a",
+            "//main//code[@class='language-bash' or @class='sh']/../..//button[@data-testid='copy-button']  |  //main",
+            "//main//div[@role='button' and @aria-expanded='false'] | //main//div[@role='button' and @aria-expanded='true'] | //main",
+            "//button[@data-testid='preview-component-next-btn' or @data-testid='component-next-btn']",
+            workshopUrl
+            )
+            try {
+               wrshpPage.initDriver().scrapeCode()
+            }catch(Exception excp) {
+               excp.printStackTrace()
+               throw excp
+            } finally {
+               //TBD: Cleanup finally 
+               wrshpPage.close()
+            }
+>>>>>>> a0aade53a36d508579c546e65eda7b35c2f0bf6c
          }
       }
    }
@@ -433,6 +459,7 @@ class WorkshopCodeMarkupCodeExtractor {
       indentedCodeBlkVisitor.visitChildren(node);
    }
    
+<<<<<<< HEAD
    public void visitFencedBlock(FencedCodeBlock node) {
       println "----------FCBL--------------"
       println "Info -->" + node.getInfo() 
@@ -495,5 +522,3 @@ class WorkshopCodeMarkupCodeExtractor {
       }
       return moduleKey
     }
-    
-}
