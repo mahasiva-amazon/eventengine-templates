@@ -332,16 +332,44 @@ class WorkshopCodeMarkupCodeExtractor {
    private class CodeBlk {
       private String code
       private CodeBlkType type
+      
+      public String toString() {
+         StringBuilder str = new StringBuilder("code: ");
+         str.append(code).append(",type: ").append(type)
+         return str.toString()
+      }
    }
    
    private class ModuleInfo {
-      private StringBuilder moduleKey
-      private Map<String,CodeBlk> codeBloks = new LinkedHashMap<String,CodeBlk>()
+      private String moduleKey
+      private int weight
+      private Map<String,PageInfo> pages = new TreeMap<String,PageInfo>()
+      
+      public String toString() {
+         StringBuilder str = new StringBuilder("module:\n").append("   mk: ");
+         str.append(moduleKey).append("\n   w: ").append(weight).append("\n").append(pages.keySet()).append("\n")
+         return str.toString()
+      }
    }
    
+   private class PageInfo {
+      private String pageKey
+      private int weight
+      private boolean isPreReq
+      private List codeBloks = new ArrayList<CodeBlk>()
+      
+      public String toString() {
+         StringBuilder str = new StringBuilder("\n  - page\n").append("      pk: ");
+         str.append(pageKey).append("\n      w: ").append(weight)//.append("\n").append(codeBloks).append("\n")
+         return str.toString()
+      }
+   }
+   
+   private static final String CONTENT_FILE = File.separator + "content" + File.separator
+   
    private final String workshopRepo
-   private final Map<String, ModuleInfo> moduleMapping
-
+   
+   private Map<String, ModuleInfo> moduleMapping
    private List<String> mdFiles   
    private File currFile
    
@@ -401,45 +429,94 @@ class WorkshopCodeMarkupCodeExtractor {
             fencedCodeBlkVisitor.visit(mdAST)
             indentedCodeBlkVisitor.visit(mdAST)
             codeBlkVisitor.visit(mdAST)
+
          }finally {
             if(reader != null) {
                reader.close()
             }
          }
       }
+      rekeyBasedOnWeights()
+      println moduleMapping
+   }
+   
+   private void rekeyBasedOnWeights() {
+      Map<String, ModuleInfo> newMapping = new TreeMap<>()
+      for(String mkey : moduleMapping.keySet()){
+         ModuleInfo module = moduleMapping.get(mkey)
+         //rekey
+         String newMk = paddedWeight(module.weight) + module.moduleKey
+         Map<String,PageInfo> pages = new TreeMap<>()
+         for(String pkey : module.pages.keySet()) {
+            PageInfo page = module.pages.get(pkey)
+            //rekey
+            
+            pages.put(paddedWeight(page.weight) + "_" + page.pageKey,page)
+         }
+         //reset
+         module.pages = pages
+         newMapping.put(newMk,module)
+      }
+      //reset
+      this.moduleMapping = newMapping
+   }
+   
+   private String paddedWeight(int weight) {
+      if(weight < 10) {
+         return "000" + weight
+      } else if(weight < 100) {
+         return "00" + weight
+      } else if(weight < 1000) {
+         return "0" + weight
+      }
    }
    
    public void visitCodeBlock(Code node) {
-      println "----------CBL--------------"
-      println "GC +=>" + node.getChars()
-      println "----------CBL--------------"
+      String moduleKey = getModuleKey(currFile)
+      String pageKey = currFile.getName()
+      CodeBlk codeblk = new CodeBlk()
+      codeblk.code = node.getChars()
+      codeblk.type = CodeBlkType.OTHER_CODE_BLOCKS
+      moduleMapping.get(moduleKey).pages.get(pageKey).codeBloks.add(codeblk)
       indentedCodeBlkVisitor.visitChildren(node);
    }
    
    
    public void visitIndentedBlock(IndentedCodeBlock node) {
-      println "----------INBL--------------"
-      println "Content Chars ==>" + node.getContentChars().toString()
-      println "Content Lines ==>" + node.getContentLines().toString()
-      println "GC +=>" + node.getChars()
-      println "----------INBL--------------"
+      String moduleKey = getModuleKey(currFile)
+      String pageKey = currFile.getName()
+      CodeBlk codeblk = new CodeBlk()
+      codeblk.code = node.getChars()
+      codeblk.type = CodeBlkType.OTHER_CODE_BLOCKS
+      moduleMapping.get(moduleKey).pages.get(pageKey).codeBloks.add(codeblk)
       indentedCodeBlkVisitor.visitChildren(node);
    }
    
    public void visitFencedBlock(FencedCodeBlock node) {
-      println "----------FCBL--------------"
-      println "Info -->" + node.getInfo() 
-      println "Content Chars ==>" + node.getContentChars().toString()
-      println "Content Lines ==>" + node.getContentLines().toString()
-      println "GC +=>" + node.getChars()
-      println "----------FCBL--------------"
+      String moduleKey = getModuleKey(currFile)
+      String pageKey = currFile.getName()
+      CodeBlk codeblk = new CodeBlk()
+      codeblk.type = CodeBlkType.OTHER_CODE_BLOCKS
+      String blkType = node.getInfo()
+      if(blkType.startsWith("bash") || blkType.startsWith("sh")) {
+         codeblk.type = CodeBlkType.SHELL_CODE
+      }
+      if(blkType.contains("validation")) {
+         codeblk.type = CodeBlkType.VALIDATION_TEXT
+      }
+      codeblk.code = node.getContentLines().toString()
+      moduleMapping.get(moduleKey).pages.get(pageKey).codeBloks.add(codeblk)
       fencedCodeBlkVisitor.visitChildren(node);
     }
     
+    public void visitTitle(YamlFrontMatterNode node) {
+      titleBlkVisitor.visitChildren(node);
+    }
+    
     public void visitHeading(Heading node) {
-      println "----------HBL--------------"
-      String title = null, weight = null;
-      String content = node.getContentChars().toString()
+      String title = null
+      int weight = 0
+      String content = node.getChars()
       int indexOfTitle = content.indexOf("title: ")
       int indexOfWeight = content.indexOf("weight: ")
       if(indexOfTitle > -1) {
@@ -447,46 +524,62 @@ class WorkshopCodeMarkupCodeExtractor {
          end = end < 0 ? content.length() : end
          title = content.substring(indexOfTitle + "title: ".length(), end).trim()
       } else {
-         title = node.getContentChars()
+         title = content
       }
       if(indexOfWeight > -1) {
          int end = content.indexOf("\n",indexOfWeight);
          end = end < 0 ? content.length() : end
-         weight = content.substring(indexOfWeight + "weight: ".length(), end).trim()
-      } else {
-         weight = "0000"
+         weight = Integer.parseInt(content.substring(indexOfWeight + "weight: ".length(), end).trim())
+      } 
+      //means tile block, hence good time to create page information as this represents a new file being processed
+      if(indexOfTitle > -1) {
+         populatePageInfo(currFile,weight)
       }
-      println "Module Key --> " + generateModuleKey(currFile,weight)
-      println "Title " + title + " Weight " + weight
-      println "----------HBL--------------"
       headingBlkVisitor.visitChildren(node);
     }
    
-    public String generateModuleKey(File file, String weight) {
-      StringBuilder moduleKey = new StringBuilder("/");
+    private String getModuleKey(File file) {
+      String moduleKey = null
       String parentFileName = file.getParentFile().getName()
       String parentFilePath = file.getParentFile().getPath().replace("\\",File.separator)
-      if(weight == null || weight == "") {
-         weight = "0000"
-      }
-      if(weight.length() == 3) {
-         weight = "0" + weight
-      } else if(weight.length() == 2) {
-         weight = "00" + weight
-      } else if(weight.length() == 1) {
-         weight = "000" + weight
-      }
-      
-      if(!"content".equals(parentFileName) && parentFilePath.startsWith("content" + File.separator)) {
-         String parentPathFromContent = parentPath.substring(parentPath.indexOf("content") + File.separator)
-         if(!file.getName().startsWith("index")) {
-            moduleKey.append("/NA_").append(parentPathFromContent).append("/").append(weight).append("_").append(file.getName())   
-         } else {
-            moduleKey.append("/").append(weight).append(parentPathFromContent).append("/").append("0000_").append(file.getName())
-         }
+      if(!"content".equals(parentFileName) && parentFilePath.contains(CONTENT_FILE)) {
+         moduleKey = "/" + parentFilePath.substring(parentFilePath.lastIndexOf(CONTENT_FILE) + CONTENT_FILE.length())
       } else {
-         moduleKey.append(weight).append("_").append(file.getName())
+         moduleKey = "/"
       }
       return moduleKey
+    }
+    
+    private void populatePageInfo(File file, int weight) {
+      String moduleKey = null, pageKey = null
+      int moduleWeight = -1, pageWeight = 0
+      moduleKey = getModuleKey(file)
+      if("/".equals(moduleKey)) {
+         moduleWeight = 0
+      }
+      pageKey = file.getName()
+      if(pageKey.startsWith("index.")) {
+         //incase of the index files then weight of the index modules is the weight of the module
+         moduleWeight = weight
+      } else {
+         pageWeight = weight
+      }
+      //println "module key"  + moduleKey + " file key " + pageKey + " mw " + moduleWeight + " pw" + pageWeight
+      String moduleLookupKey = moduleKey
+      ModuleInfo module = moduleMapping.get(moduleLookupKey)
+      if(module == null) {
+         module = new ModuleInfo()
+         module.moduleKey = moduleKey
+         moduleMapping.put(moduleKey,module)
+      }
+      //if a module weight is identified
+      if(moduleWeight > -1) {
+         module.weight = moduleWeight
+      }
+      PageInfo page = new PageInfo()
+      page.pageKey = pageKey
+      page.weight = pageWeight
+      //add to the module so it is sorted by weight and lexiography
+      module.pages.put(pageKey, page)
     }
 }
