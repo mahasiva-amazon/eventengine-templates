@@ -12,6 +12,8 @@ buildscript {
       classpath group: 'org.seleniumhq.selenium', name: 'selenium-java', version: '3.141.59'
       classpath group: 'org.seleniumhq.selenium', name: 'selenium-chrome-driver', version: '3.141.59'
       classpath group: 'org.commonmark', name: 'commonmark', version: '0.18.1'
+      classpath group: 'com.vladsch.flexmark', name: 'flexmark-all', version: '0.62.2'
+
    }
 }
 
@@ -29,6 +31,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.core.type.TypeReference
 import java.util.HashMap
+import java.util.TreeMap
 import org.apache.tools.ant.filters.ReplaceTokens
 import org.gradle.crypto.checksum.Checksum
 import java.io.FileInputStream
@@ -41,6 +44,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.Files
 import java.io.IOException
+import java.util.StringBuilder
 import java.nio.file.StandardOpenOption
 import org.openqa.selenium.chrome.ChromeOptions
 import org.openqa.selenium.WebDriver
@@ -65,10 +69,33 @@ import java.nio.file.Paths
 import java.io.File
 import java.io.FileReader
 import java.util.stream.Collectors
-import org.commonmark.node.Node
-import org.commonmark.parser.Parser
-import org.commonmark.node.AbstractVisitor
-import org.commonmark.node.Code
+import java.util.LinkedHashMap
+
+import com.vladsch.flexmark.util.ast.Node
+import com.vladsch.flexmark.parser.Parser
+import com.vladsch.flexmark.util.data.MutableDataSet
+import com.vladsch.flexmark.ext.anchorlink.AnchorLinkExtension
+import com.vladsch.flexmark.ext.aside.AsideExtension
+import com.vladsch.flexmark.ext.attributes.AttributesExtension
+import com.vladsch.flexmark.ext.autolink.AutolinkExtension
+import com.vladsch.flexmark.ext.definition.DefinitionExtension
+import com.vladsch.flexmark.ext.gfm.issues.GfmIssuesExtension
+import com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughExtension
+import com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughSubscriptExtension
+import com.vladsch.flexmark.ext.gfm.tasklist.TaskListExtension
+import com.vladsch.flexmark.ext.gfm.users.GfmUsersExtension
+import com.vladsch.flexmark.ext.gitlab.GitLabExtension
+import com.vladsch.flexmark.ext.yaml.front.matter.YamlFrontMatterExtension
+import com.vladsch.flexmark.ast.Text
+import com.vladsch.flexmark.util.ast.NodeVisitor
+import com.vladsch.flexmark.util.ast.VisitHandler
+import com.vladsch.flexmark.ast.FencedCodeBlock
+import com.vladsch.flexmark.ast.Heading
+import com.vladsch.flexmark.ext.yaml.front.matter.YamlFrontMatterNode
+import com.vladsch.flexmark.ast.IndentedCodeBlock
+import com.vladsch.flexmark.ast.Code
+
+
 
 ext {
    TRACE_ENABLED = false;
@@ -290,30 +317,8 @@ subprojects {
          def command = null
          def proc = null
          if(project.ext.has("config") && project.ext.config.TestConfiguration != null) {
-            String workshopUrl = project.ext.config.TestConfiguration.WorkshopRemoteUrl
-            boolean testRemote =  project.ext.config.TestConfiguration.TestRemote
-            if(!testRemote) {
-               workshopUrl = "http://localhost:8080"
-            }
-            println 'Using workshop url ' + workshopUrl
-            WorkshopCodeExtractor wrshpPage = new WorkshopCodeExtractor(
-            "//nav[@aria-hidden='false']//div[contains(@class,'awsui_expandable-link-group')]",
-            "//a",
-            "//main//code[@class='language-bash' or @class='sh']/../..//button[@data-testid='copy-button']  |  //main",
-            "//main//div[@role='button' and @aria-expanded='false'] | //main//div[@role='button' and @aria-expanded='true'] | //main",
-            "//button[@data-testid='preview-component-next-btn' or @data-testid='component-next-btn']",
-            workshopUrl
-            )
-            try {
-               //wrshpPage.initDriver().readClipBoard()
-               wrshpPage.readClipBoard()
-            }catch(Exception excp) {
-               excp.printStackTrace()
-               throw excp
-            } finally {
-               //TBD: Cleanup finally 
-               wrshpPage.close()
-            }
+            WorkshopCodeMarkupCodeExtractor codegen = new WorkshopCodeMarkupCodeExtractor(project.ext.config.TestConfiguration.WorkshopGitLocation)
+            codegen.initParser().scrapeCode()
          }
       }
    }
@@ -321,21 +326,49 @@ subprojects {
 
 class WorkshopCodeMarkupCodeExtractor {
 
+   private enum CodeBlkType {
+      SHELL_CODE, VALIDATION_TEXT, OTHER_CODE_BLOCKS
+   }
+   
+   private class CodeBlk {
+      private String code
+      private CodeBlkType type
+   }
+   
+   private class ModuleInfo {
+      private StringBuilder moduleKey
+      private Map<String,CodeBlk> codeBloks = new LinkedHashMap<String,CodeBlk>()
+   }
+   
    private final String workshopRepo
-   private List<String> mdFiles
-   private final Map<String, List<String>> codeToTopicMapping
+   private final Map<String, ModuleInfo>> moduleMapping
+
+   private List<String> mdFiles   
+   private File currFile
+   
+   
+   private NodeVisitor fencedCodeBlkVisitor = new NodeVisitor(new VisitHandler<>(FencedCodeBlock.class, { node -> this.visitFencedBlock(node) }))
+   
+   private NodeVisitor headingBlkVisitor = new NodeVisitor(new VisitHandler<>(Heading.class, { node -> this.visitHeading(node) }))
+   
+   private NodeVisitor titleBlkVisitor = new NodeVisitor(new VisitHandler<>(YamlFrontMatterNode.class, { node -> this.visitTitle(node) }))
+   
+   private NodeVisitor indentedCodeBlkVisitor = new NodeVisitor(new VisitHandler<>(IndentedCodeBlock .class, { node -> this.visitIndentedBlock(node) }))
+   
+   private NodeVisitor codeBlkVisitor = new NodeVisitor(new VisitHandler<>( Code.class, { node -> this.visitCodeBlock(node) }))
    
    public WorkshopCodeMarkupCodeExtractor(String workshopRepo) {
       this.workshopRepo = workshopRepo
       this.codeToTopicMapping = new HashMap<String, List<String>>()
+      this.moduleMapping = new TreeMap<String,StringBuilder>
    }
    
    public WorkshopCodeMarkupCodeExtractor initParser() {
       Files.walk(Paths.get(workshopRepo)).withCloseable { walk -> 
          this.mdFiles = walk
             .filter({ file -> !Files.isDirectory(file) })
-            .map( { file -> file.toString().toLowerCase() })
-            .filter({ file -> file.endsWith("md") })
+            .map( { file -> file.toString() })
+            .filter({ file -> file.toLowerCase().endsWith("md") })
             .collect(Collectors.toList())
          //println mdFiles
       }
@@ -343,149 +376,124 @@ class WorkshopCodeMarkupCodeExtractor {
    }
    
    public WorkshopCodeMarkupCodeExtractor scrapeCode() throws Exception{
+      MutableDataSet options = new MutableDataSet()
+      options.set(Parser.EXTENSIONS, Arrays.asList(
+      com.vladsch.flexmark.ext.anchorlink.AnchorLinkExtension.create(),
+      com.vladsch.flexmark.ext.aside.AsideExtension.create(),
+      com.vladsch.flexmark.ext.attributes.AttributesExtension.create(),
+      com.vladsch.flexmark.ext.autolink.AutolinkExtension.create(),
+      com.vladsch.flexmark.ext.definition.DefinitionExtension.create(),
+      com.vladsch.flexmark.ext.gfm.issues.GfmIssuesExtension.create(),
+      com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughExtension.create(),
+      com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughSubscriptExtension.create(),
+      com.vladsch.flexmark.ext.gfm.tasklist.TaskListExtension.create(),
+      com.vladsch.flexmark.ext.gfm.users.GfmUsersExtension.create(),
+      com.vladsch.flexmark.ext.gitlab.GitLabExtension.create(),
+      com.vladsch.flexmark.ext.yaml.front.matter.YamlFrontMatterExtension.create()
+      ))
       Parser parser = Parser.builder().build();
-      /*for(String mdFile : mdFiles) {
+      for(String mdFile : mdFiles) {
          Reader reader = null
          try {
-            reader = new FileReader(new File(mdFile))
+            File file = new File(mdFile)
+            currDir = file.getParentFile().getName()
+            currFile = file.getName()
+            if(currFile.startsWith("index")) {
+               isIndexFile = true
+            }
+            reader = new FileReader(file)
             Node mdAST = parser.parseReader(reader)
-            //mdAST.accept(new CodeScrapeVisitor())
+            titleBlkVisitor.visit(mdAST)
+            headingBlkVisitor.visit(mdAST)
+            fencedCodeBlkVisitor.visit(mdAST)
+            indentedCodeBlkVisitor.visit(mdAST)
+            codeBlkVisitor.visit(mdAST)
          }finally {
             if(reader != null) {
                reader.close()
             }
          }
-      }*/
-      Node mdAST = parser.parse("```:::code{showCopyAction=true showLineNumbers=true language=java} \
-         class HelloWorld { \
-    public static void main(String[] args) { \
-        System.out.println(\"Hello, World!\"); \
-    } \
-   }\
-:::\
-```")
-      mdAST.accept(new CodeScrapeVisitor())
-      return this;
-   }
-}
-
-class CodeScrapeVisitor extends AbstractVisitor {
-   public void visit(Code code) {
-      println "....Here"
-      println code.getLiteral() 
-   }
-}
-
-class WorkshopCodeExtractor implements AutoCloseable{
-   
-   private final String navLinksPath
-   private final String navLinksPathExpander
-   private final String navLinkTopic
-   private final String codeCopyButton
-   private final String workshopUrl
-   private final String nextBttn
-   private final String subPageLinks
-   private final Map<String, List<String>> codeToTopicMapping
-   
-   private WebDriver driver
-   
-   /**
-    * Initiatize with navigation and 
-    */
-   public WorkshopCodeExtractor(String navLinksPath, String navLinkTopic, String codeCopyButton, String subPageLinks, String nextBttn, String workshopUrl) {
-      this.navLinksPath = navLinksPath
-      this.navLinkTopic = navLinkTopic
-      this.codeCopyButton = codeCopyButton
-      this.workshopUrl = workshopUrl
-      this.subPageLinks = subPageLinks
-      this.codeToTopicMapping = new HashMap<String, List<String>>()
-      this.nextBttn = nextBttn
-   }
-   
-   /**
-    * Initiaize Driver
-    */
-   public WorkshopCodeExtractor initDriver() {
-      println "Initialization start...."
-      ChromeOptions options = new ChromeOptions()
-      options.addArguments("--headless");
-      driver = new ChromeDriver(options)
-      driver.manage().window().maximize()
-      driver.get(workshopUrl)
-      println "Initialization complete..."
-      return this
-   }
-   
-   public WorkshopCodeExtractor scrapeCode() {
-      println "Scrape code start..."
-      WebDriverWait wait = new WebDriverWait(driver, 5)
-      List<WebElement> navLinks = wait.until(
-             ExpectedConditions.visibilityOfAllElementsLocatedBy(By.xpath(navLinksPath)))
-      int count = 1
-      for(WebElement navLink : navLinks) {
-         String xpath = "(" + navLinksPath + ")[" + count + "]" + navLinkTopic
-         //println "Looking for xpath " + xpath
-         List<WebElement> navLinkTopics = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath(xpath)))
-         //println "Nav Links Topics " + navLinkTopics.size()
-         for(WebElement navLinkTopic : navLinkTopics) {
-	         wait.until(ExpectedConditions.visibilityOf(navLinkTopic))
-	         navLinkTopic.click();
-            wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath(nextBttn)))
-            String topicText = navLinkTopic.getText()
-	         println topicText
-            try {
-                List<WebElement> subPageLinksBtns = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath(subPageLinks)))
-                for(int subPgCnt = 1; subPgCnt < subPageLinksBtns.size(); subPgCnt++) {
-                  WebElement btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + subPageLinks + ")[" + (subPgCnt + 1) + "]" )))
-                  try {
-                     if("false".equals(btn.getAttribute("aria-expanded"))) {
-                       btn.click()
-		               }
-                  }catch(StaleElementReferenceException sexcp) {
-                     println "Element refreshed..."
-                     btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + subPageLinks + ")[" + (subPgCnt + 1) + "]" )))
-                     if("false".equals(btn.getAttribute("aria-expanded"))) {
-                        btn.click()
-		               }
-                  }
-               }
-            	List<WebElement> codeButtons = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath(codeCopyButton)))
-               println "Topic " + topicText + " has " + codeButtons.size() + " code blocks "
-               for(int codeCnt = 1; codeCnt < codeButtons.size(); codeCnt++) {
-		            WebElement btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + codeCopyButton + ")[" + (codeCnt + 1) + "]" )))
-                  try {
-		               btn.click()
-	               } catch(StaleElementReferenceException sexcp) {
-                     println "Element refreshed..."
-                     btn = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("(" + codeCopyButton + ")[" + (codeCnt + 1) + "]" )))
-                     btn.click()
-		            }
-   		         readClipBoard()
-		         }
-	         }catch(NoSuchElementException nexcp) {
-	            println "No code blocks found in topic " + topicText + "..."
-	         }
-         }
-         count++;
       }
-      println "Scrape code complete..."
-      return this;
    }
    
-   public String readClipBoard() {
-      Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard()
-      Transferable contents = clipboard.getContents(null)
-      String codeContent =  (String) contents.getTransferData(DataFlavor.stringFlavor) 
-      println codeContent  
-      return codeContent
+   public void visitCodeBlock(Code node) {
+      println "----------CBL--------------"
+      println "GC +=>" + node.getChars()
+      println "----------CBL--------------"
+      indentedCodeBlkVisitor.visitChildren(node);
    }
- 
-   public void close() {
-      /*
-       try{
-          Thread.sleep(8000);
-      }catch(Exception excp) {}
-      */
-      driver.quit();
+   
+   
+   public void visitIndentedBlock(IndentedCodeBlock node) {
+      println "----------INBL--------------"
+      println "Content Chars ==>" + node.getContentChars().toString()
+      println "Content Lines ==>" + node.getContentLines().toString()
+      println "GC +=>" + node.getChars()
+      println "----------INBL--------------"
+      indentedCodeBlkVisitor.visitChildren(node);
    }
+   
+   public void visitFencedBlock(FencedCodeBlock node) {
+      println "----------FCBL--------------"
+      println "Info -->" + node.getInfo() 
+      println "Content Chars ==>" + node.getContentChars().toString()
+      println "Content Lines ==>" + node.getContentLines().toString()
+      println "GC +=>" + node.getChars()
+      println "----------FCBL--------------"
+      fencedCodeBlkVisitor.visitChildren(node);
+    }
+    
+    public void visitHeading(Heading node) {
+      println "----------HBL--------------"
+      String title = null, weight = null;
+      int indexOfTitle = content.indexOf("title: ")
+      int indexOfWeight = content.indexOf("weight: ")
+      if(indexOfTitle > -1) {
+         int end = content.indexOf("\n",indexOfTitle);
+         end = end < 0 ? content.length() : end
+         title = content.substring(indexOfTitle + "title: ".length(), end).trim()
+      } else {
+         title = node.getContentChars()
+      }
+      if(indexOfWeight > -1) {
+         int end = content.indexOf("\n",indexOfWeight);
+         end = end < 0 ? content.length() : end
+         weight = content.substring(indexOfWeight + "weight: ".length(), end).trim()
+      } else {
+         weight = "0000"
+      }
+      generateModuleKey(
+      println "Title " + title + " Weight " + weight
+      println "----------HBL--------------"
+      headingBlkVisitor.visitChildren(node);
+    }
+   
+    public String generateModuleKey(File file, String weight) {
+      StringBuilder moduleKey = new StringBuilder("/");
+      String parentFileName = file.toParentFile().getName()
+      String parentFilePath = file.toParentFile().getPath().replace("\\",File.separator)
+      if(weight == null || weight == "") {
+         weight = "0000"
+      }
+      if(weight.length == 3) {
+         weight = "0" + weight
+      } else if(weight.length == 2) {
+         weight = "00" + weight
+      } else if(weight.length == 1) {
+         weight = "000" + weight
+      }
+      
+      if(!"content".equals(parentFileName) && parentFilePath.startsWith("content" + File.separator)) {
+         String parentPathFromContent = parentPath.substring(parentPath.indexOf("content") + File.separator)
+         if(!file.getName().startsWith("index")) {
+            moduleKey.append("/NA_").append(parentPathFromContent).append("/").append(weight).append("_").append(file.getName())   
+         } else {
+            moduleKey.append("/").append(weight).append(parentPathFromContent).append("/").append("0000_").append(file.getName())
+         }
+      } else {
+         moduleKey.append(weight).append("_").append(file.getName())
+      }
+      return moduleKey
+    }
+    
 }
