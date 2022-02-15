@@ -305,8 +305,7 @@ subprojects {
             workshopUrl
             )
             try {
-               //wrshpPage.initDriver().readClipBoard()
-               wrshpPage.readClipBoard()
+               wrshpPage.initDriver().scrapeCode()
             }catch(Exception excp) {
                excp.printStackTrace()
                throw excp
@@ -408,7 +407,7 @@ class WorkshopCodeExtractor implements AutoCloseable{
    public WorkshopCodeExtractor initDriver() {
       println "Initialization start...."
       ChromeOptions options = new ChromeOptions()
-      options.addArguments("--headless");
+      options.addArguments( "--headless","--disable-gpu", "--no-sandbox" )
       driver = new ChromeDriver(options)
       driver.manage().window().maximize()
       driver.get(workshopUrl)
